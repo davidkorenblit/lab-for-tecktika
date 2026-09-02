@@ -1,4 +1,5 @@
 import { cx, formatBytes } from '@/lib/format';
+import { useExpiry } from '@/hooks/useExpiry';
 import type { ChatMessage, ConfirmationRequest } from '@/types';
 
 interface ConfirmationCardProps {
@@ -30,6 +31,7 @@ export function ConfirmationCard({
 }: ConfirmationCardProps) {
   const { action, summary, files, destructive } = confirmation;
   const decided = Boolean(resolution);
+  const expired = useExpiry(confirmation.expiresAt);
 
   return (
     <div
@@ -81,6 +83,11 @@ export function ConfirmationCard({
           {resolution!.decision === 'confirmed'
             ? `Confirmed${resolution!.jobId ? ' — running in the background' : ''}.`
             : 'Declined. Nothing was changed.'}
+        </p>
+      ) : expired ? (
+        <p className="mt-3 text-xs font-medium text-ink-muted">
+          This request expired before it was answered. Nothing was changed — ask again if you
+          still want it.
         </p>
       ) : (
         <div className="mt-3 flex flex-wrap gap-2">

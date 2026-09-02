@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { cx, formatBytes } from '@/lib/format';
+import { useExpiry } from '@/hooks/useExpiry';
 import type { ConfirmationRequest } from '@/types';
 
 interface ConfirmationDialogProps {
@@ -43,9 +44,10 @@ export function ConfirmationDialog({
   const dialogRef = useRef<HTMLDivElement>(null);
   const [typed, setTyped] = useState('');
 
+  const expired = useExpiry(confirmation.expiresAt);
   const targetName = files[0]?.name ?? '';
   const requiresTypedName = destructive && targetName.length > 0;
-  const canConfirm = !requiresTypedName || typed.trim() === targetName;
+  const canConfirm = !expired && (!requiresTypedName || typed.trim() === targetName);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -122,7 +124,14 @@ export function ConfirmationDialog({
           ))}
         </ul>
 
-        {destructive && (
+        {expired && (
+          <p className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">
+            This request expired before it was answered, so it can no longer be approved. Close
+            this and ask again if you still want it.
+          </p>
+        )}
+
+        {destructive && !expired && (
           <p className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">
             {action === 'delete'
               ? 'This removes the file from the SharePoint library and its index. It cannot be undone from here.'
@@ -130,7 +139,7 @@ export function ConfirmationDialog({
           </p>
         )}
 
-        {requiresTypedName && (
+        {requiresTypedName && !expired && (
           <label className="mt-3 block text-xs text-ink-muted">
             {files.length === 1 ? (
               <>

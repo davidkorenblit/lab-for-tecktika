@@ -30,8 +30,16 @@ export const UPLOAD_SINGLE_SHOT_LIMIT = 32 * 1024 * 1024;
 export const UPLOAD_BLOCK_CONCURRENCY = 3;
 
 export const JOBS_STORAGE_KEY = 'ai-agent-chat.jobs.v1';
-/** `{ threadId, conversationId }` — see the identity note in useChat. */
-export const THREAD_STORAGE_KEY = 'ai-agent-chat.thread.v2';
+/** `ThreadStore` — the conversation list. See the identity note in lib/threads. */
+export const THREAD_STORAGE_KEY = 'ai-agent-chat.threads.v3';
+/** Previous single-conversation key, read once so an in-flight chat is not lost. */
+export const THREAD_STORAGE_KEY_V2 = 'ai-agent-chat.thread.v2';
+/** Conversations kept in the switcher before the oldest are dropped. */
+export const MAX_TRACKED_THREADS = 20;
+
+/** Confirmations the user has already answered, so a refresh cannot re-offer them. */
+export const CONFIRMATION_RESOLUTIONS_KEY = 'ai-agent-chat.confirmations.v1';
+export const CONFIRMATION_RESOLUTION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 /** Partial assistant reply, kept so a refresh mid-stream does not lose it. */
 export const STREAM_DRAFT_STORAGE_KEY = 'ai-agent-chat.stream-draft.v1';
 

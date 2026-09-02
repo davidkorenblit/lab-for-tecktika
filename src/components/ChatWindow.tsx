@@ -17,6 +17,10 @@ import type { ConfirmationRequest } from '@/types';
 export function ChatWindow() {
   const {
     messages,
+    threadId,
+    threads,
+    switchThread,
+    deleteThread,
     isLoadingHistory,
     historyError,
     refetchHistory,
@@ -88,10 +92,14 @@ export function ChatWindow() {
       <Composer
         isStreaming={isStreaming}
         attachments={attachments}
+        threads={threads}
+        activeThreadId={threadId}
         onSend={handleSend}
         onStop={stopStreaming}
         onAttachFile={(file) => void attachFile(file)}
         onRemoveAttachment={removeAttachment}
+        onSelectThread={switchThread}
+        onDeleteThread={deleteThread}
         onNewConversation={startNewConversation}
       />
 

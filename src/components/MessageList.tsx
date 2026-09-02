@@ -23,6 +23,7 @@ export function MessageList({
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const lastAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant');
 
   // Follow the stream only while the user is already at the bottom; scrolling
   // up to read an earlier answer should not get yanked back down.
@@ -76,6 +77,15 @@ export function MessageList({
 
         {isStreaming && messages.at(-1)?.content === '' && <TypingIndicator />}
       </div>
+
+      {/*
+        Screen readers get nothing from a bubble whose text is being mutated by
+        the stream. The finished answer is announced once, politely, when the
+        stream ends — announcing every frame would be unusable.
+      */}
+      <p aria-live="polite" aria-atomic="true" className="sr-only">
+        {!isStreaming && lastAssistantMessage ? lastAssistantMessage.content : ''}
+      </p>
     </div>
   );
 }

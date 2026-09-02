@@ -11,7 +11,12 @@ cp .env.example .env      # point VITE_DEV_API_PROXY at your backend
 npm run dev               # http://localhost:5173
 npm run build             # type-check + production bundle into dist/
 npm run lint
+npm test                  # vitest
 ```
+
+The API contract this client is written against is in **[API.md](API.md)** — routes,
+the SSE frame protocol, the shapes it tolerates, and the open questions for whoever
+owns the server.
 
 In dev, Vite proxies both `/api` and `/.auth` to `VITE_DEV_API_PROXY`. With no
 Easy Auth host available locally, set `VITE_AUTH_DEV_BYPASS=true` to skip the
@@ -65,6 +70,11 @@ load — asking `/api/chat/history` without an id returns the most recent
 conversation, which is the one being left behind — so the first message is what
 brings the server-side conversation into existence.
 
+**Session history.** Conversations are listed newest first in the composer footer,
+each named after its opening message, and reopening one refetches its history. The
+list lives in `localStorage` because the API has no conversations endpoint yet; if
+one appears, this becomes the rendering layer for it and nothing else moves.
+
 **A reply interrupted by a refresh is not lost.** The in-flight answer is written
 to `localStorage` as it streams (at most once a second) and spliced back into the
 transcript on the next load, marked as interrupted, if the server does not have
@@ -84,7 +94,14 @@ list every affected file by name — never "this file" or a count — and every
 destructive action requires typing a file name before the button unlocks, bulk
 operations included. An action whose type the client does not recognise is
 treated as destructive. Requests queue into a single modal slot, so two
-`aria-modal` dialogs can never stack and fight over the focus trap.
+`aria-modal` dialogs can never stack and fight over the focus trap. Decisions are
+persisted against the backend's `confirmationId`, so a refresh cannot re-offer an
+action the user has already answered, and a confirmation past its `expiresAt` locks
+itself rather than staying clickable.
+
+None of that is enforcement — it is an interlock for a human. The server issues the
+`confirmationId`, binds it to an action and a file set, and must refuse to act
+without one; the client never synthesises one. See [API.md §6.1](API.md).
 
 **Large uploads (`src/services/blobUpload.ts`, `src/hooks/useFileUpload.ts`).**
 Two steps: ask the API for a SAS URL, then PUT the bytes straight to storage, so
@@ -147,11 +164,22 @@ Two things to confirm against the real API:
 
 ## Verification
 
-`npm run build` (type-check + bundle) and `npm run lint` both pass clean. The
-component tree was rendered once through `react-dom/server` to check that
-markdown, attachment chips, citation chips and the confirmation dialog produce
-what they should, including that a bulk delete demands a typed file name and that
-an unbounded relevance score is not rendered as a percentage.
+`npm run build`, `npm run lint` and `npm test` all pass clean — 45 tests in four
+files:
 
-There is no automated test suite, and the UI has not been exercised against a
-live backend.
+- `src/lib/sse.test.ts` — the SSE parser against chunk splits mid-field, CRLF
+  framing, `:` keep-alives, multi-line `data:`, an unterminated tail, the
+  single-leading-space rule, and abort.
+- `src/services/normalise.test.ts` — the tolerated backend shapes, which are the
+  client's half of [API.md](API.md): job state vocabularies, fractional vs
+  percentage progress, citation aliases, and that an unrecognised confirmation
+  action fails safe to destructive.
+- `src/lib/confirmations.test.ts` — an answered confirmation is not re-offered
+  after a reload, and expiry boundaries.
+- `src/components/render.test.tsx` — the tree through `react-dom/server`: markdown
+  renders rather than leaking its source, every file name appears on a bulk delete,
+  a typed name is demanded, an expired confirmation refuses, and an unbounded
+  relevance score never reaches the DOM as a percentage.
+
+**The UI has not been exercised against a live backend.** Every backend-facing
+assumption is listed in [API.md §7](API.md).

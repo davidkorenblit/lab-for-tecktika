@@ -115,9 +115,11 @@ Message shape, with the aliases the client accepts:
 }
 ```
 
-> **Please echo `attachments` and `confirmation` back.** Without them a page refresh
-> loses the file chips on a user turn and re-renders an answered confirmation as
-> still actionable. `OPEN` — §7.2
+> **Please echo `attachments` and `confirmation` back.** Without `attachments` a page
+> refresh loses the file chips on a user turn. `confirmation` matters less than it
+> did — the client now remembers its own answers against your `confirmationId`, so an
+> answered confirmation is not re-offered after a reload — but it is still how a
+> *pending* confirmation survives a refresh. `OPEN` — §7.2
 
 Source: [chat.ts:21-52](src/services/chat.ts#L21-L52)
 
@@ -316,8 +318,9 @@ I will render it as an absolute percentage instead.
 - An unrecognised `action` becomes `unknown` and is treated as **destructive** — the
   client fails safe. `AGREED`
 - If `destructive` is omitted it defaults to `action !== "upload"`. `AGREED`
-- `expiresAt` is parsed but not yet enforced client-side. `ASSUMED` — tell me the
-  intended lifetime and I will lock the button when it passes.
+- `expiresAt` **is enforced**: once it passes, the confirmation locks itself and
+  says so rather than staying clickable. Omit it and a confirmation never expires
+  client-side. `AGREED`
 
 ### 5.3 AffectedFile
 
@@ -436,9 +439,12 @@ Answer these and the contract is closed. One line each is enough.
 2. **Does `POST /api/chat/message` accept `attachments[]`, and does
    `GET /api/chat/history` echo them back?** (§3.1, §3.2)
 3. **Does `confirm-action` return a `jobId`?** (§3.4)
-4. **Will there be `GET /api/chat/conversations`?** Needed for real session history
-   (2.1). If not, I will keep the last N threads in `localStorage` and offer a
-   switcher — workable, but yours is better.
+4. **Will there be `GET /api/chat/conversations`?** Not blocking any more — the
+   client keeps its 20 most recent threads in `localStorage` and offers a switcher,
+   which satisfies 2.1. But that list is per-browser: it does not follow the user to
+   another machine, and it cannot show a conversation this browser never opened. If
+   you expose an endpoint, the switcher becomes its rendering layer and nothing else
+   moves.
 5. **How long are job records retained?** Must be ≥24h to match the client. (§6.2)
 6. **Does `succeeded` mean uploaded or searchable, and what is the lag?** (§6.5)
    *Probably the most important question here.*

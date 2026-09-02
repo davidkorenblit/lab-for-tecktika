@@ -4,11 +4,21 @@ import {
   STREAM_DRAFT_MAX_AGE_MS,
   STREAM_DRAFT_PERSIST_MS,
   STREAM_DRAFT_STORAGE_KEY,
-  THREAD_STORAGE_KEY,
 } from '@/config';
 import { queryKeys } from '@/lib/queryClient';
+import { applyStoredResolutions, recordResolution } from '@/lib/confirmations';
 import { readJson, removeKey, writeJson } from '@/lib/storage';
 import { uid } from '@/lib/format';
+import {
+  findThread,
+  loadThreadStore,
+  newThread,
+  patchThread,
+  saveThreadStore,
+  sortAndCap,
+  titleFromMessage,
+  type ThreadStore,
+} from '@/lib/threads';
 import { fetchChatHistory, streamChatMessage } from '@/services/chat';
 import { confirmAction } from '@/services/files';
 import { useJobs } from '@/providers/JobsProvider';
@@ -40,20 +50,6 @@ import type {
  * re-render the list on every few characters.
  */
 
-interface PersistedThread {
-  threadId: string;
-  conversationId?: string;
-  /**
-   * The user asked for a new conversation and the backend has not named it yet.
-   *
-   * There is no endpoint to create one up front, and asking `/api/chat/history`
-   * without an id returns the most recent conversation — which is exactly the
-   * one being left behind. So a fresh thread simply does not load history; the
-   * first message is what brings the server-side conversation into existence.
-   */
-  fresh?: boolean;
-}
-
 /** An assistant reply that was still streaming when the page went away. */
 interface StreamDraft {
   threadId: string;
@@ -63,22 +59,25 @@ interface StreamDraft {
   savedAt: number;
 }
 
-function loadThread(): PersistedThread {
-  const stored = readJson<PersistedThread | null>(THREAD_STORAGE_KEY, null);
-  if (stored && typeof stored.threadId === 'string' && stored.threadId) return stored;
-  const fresh: PersistedThread = { threadId: uid('thread') };
-  writeJson(THREAD_STORAGE_KEY, fresh);
-  return fresh;
-}
-
 export function useChat() {
   const queryClient = useQueryClient();
   const { trackJob } = useJobs();
 
-  const [thread, setThread] = useState<PersistedThread>(loadThread);
-  const { threadId } = thread;
+  const [store, setStore] = useState<ThreadStore>(loadThreadStore);
+  const threadId = store.activeThreadId;
+  const thread = findThread(store, threadId);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+
+  const commitStore = useCallback((update: (current: ThreadStore) => ThreadStore) => {
+    setStore((current) => {
+      const next = update(current);
+      if (next === current) return current;
+      const capped = { ...next, threads: sortAndCap(next.threads) };
+      saveThreadStore(capped);
+      return capped;
+    });
+  }, []);
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef<{ messageId: string; text: string } | null>(null);
@@ -87,23 +86,29 @@ export function useChat() {
   const draftWrittenAtRef = useRef(0);
   // Read inside the query function, which must not be re-created when the
   // server id changes — that would refetch and defeat the point of threadId.
-  const conversationIdRef = useRef(thread.conversationId);
-  conversationIdRef.current = thread.conversationId;
+  const conversationIdRef = useRef(thread?.conversationId);
+  conversationIdRef.current = thread?.conversationId;
 
   const queryKey = useMemo(() => queryKeys.chatHistory(threadId), [threadId]);
 
   /* ------------------------------ thread identity ----------------------------- */
 
-  const adoptConversationId = useCallback((conversationId: string | undefined) => {
-    if (!conversationId) return;
-    setThread((current) => {
-      if (current.conversationId === conversationId) return current;
-      // Named by the server: it exists now, so history applies again.
-      const next: PersistedThread = { threadId: current.threadId, conversationId };
-      writeJson(THREAD_STORAGE_KEY, next);
-      return next;
-    });
-  }, []);
+  const adoptConversationId = useCallback(
+    (conversationId: string | undefined) => {
+      if (!conversationId) return;
+      commitStore((current) => {
+        const active = findThread(current, current.activeThreadId);
+        if (!active || active.conversationId === conversationId) return current;
+        // Named by the server: it exists now, so history applies to it again.
+        return patchThread(current, current.activeThreadId, {
+          conversationId,
+          fresh: undefined,
+          lastActiveAt: Date.now(),
+        });
+      });
+    },
+    [commitStore],
+  );
 
   /* --------------------------------- drafts ---------------------------------- */
 
@@ -156,9 +161,13 @@ export function useChat() {
             ]
           : [];
 
-      return { ...response, messages: [...response.messages, ...recovered, ...localOnly] };
+      return {
+        ...response,
+        // Decisions the user already made must not come back as open questions.
+        messages: applyStoredResolutions([...response.messages, ...recovered, ...localOnly]),
+      };
     },
-    enabled: !thread.fresh,
+    enabled: !thread?.fresh,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   });
@@ -249,6 +258,16 @@ export function useChat() {
       bufferRef.current = { messageId: assistantId, text: '' };
       draftRef.current = { threadId, messageId: assistantId, content: '', createdAt: now, savedAt: 0 };
       patchMessages((messages) => [...messages, userMessage, assistantMessage]);
+
+      // Name the conversation after its opening line, the way a subject line works.
+      commitStore((current) => {
+        const active = findThread(current, threadId);
+        if (!active) return current;
+        return patchThread(current, threadId, {
+          lastActiveAt: Date.now(),
+          title: active.title ?? titleFromMessage(trimmed, attachments[0]?.fileName),
+        });
+      });
       setIsStreaming(true);
       setStreamError(null);
 
@@ -331,6 +350,7 @@ export function useChat() {
     [
       adoptConversationId,
       clearDraft,
+      commitStore,
       flushBuffer,
       isStreaming,
       patchMessages,
@@ -371,13 +391,15 @@ export function useChat() {
         });
       }
 
-      updateMessage(messageId, {
-        confirmationResolution: {
-          decision,
-          at: new Date().toISOString(),
-          jobId: response.jobId,
-        },
-      });
+      const resolution = {
+        decision,
+        at: new Date().toISOString(),
+        jobId: response.jobId,
+      } as const;
+      // Persisted against the backend's confirmationId so a refresh does not
+      // re-offer an action the user has already answered.
+      recordResolution(confirmation.confirmationId, resolution);
+      updateMessage(messageId, { confirmationResolution: resolution });
 
       return response;
     },
@@ -387,22 +409,64 @@ export function useChat() {
   /**
    * Really starts a new thread. The old version cleared the server id and then
    * let the next history response put it straight back, so "New conversation"
-   * returned you to the conversation you had just left.
+   * returned you to the conversation you had just left. The previous thread is
+   * kept in the list rather than discarded, so it can be reopened.
    */
   const startNewConversation = useCallback(() => {
     stopStreaming();
     clearDraft();
-    queryClient.removeQueries({ queryKey: queryKeys.chatHistory(threadId) });
-    const next: PersistedThread = { threadId: uid('thread'), fresh: true };
-    writeJson(THREAD_STORAGE_KEY, next);
+    const thread = newThread(true);
     conversationIdRef.current = undefined;
-    setThread(next);
-  }, [clearDraft, queryClient, stopStreaming, threadId]);
+    commitStore((current) => ({
+      activeThreadId: thread.threadId,
+      threads: [...current.threads, thread],
+    }));
+  }, [clearDraft, commitStore, stopStreaming]);
+
+  /** Reopens an earlier conversation. Its history is refetched on demand. */
+  const switchThread = useCallback(
+    (targetId: string) => {
+      if (targetId === threadId) return;
+      stopStreaming();
+      commitStore((current) => {
+        if (!findThread(current, targetId)) return current;
+        conversationIdRef.current = findThread(current, targetId)?.conversationId;
+        return {
+          ...patchThread(current, targetId, { lastActiveAt: Date.now() }),
+          activeThreadId: targetId,
+        };
+      });
+    },
+    [commitStore, stopStreaming, threadId],
+  );
+
+  const deleteThread = useCallback(
+    (targetId: string) => {
+      queryClient.removeQueries({ queryKey: queryKeys.chatHistory(targetId) });
+      commitStore((current) => {
+        const remaining = current.threads.filter((entry) => entry.threadId !== targetId);
+        // Never end up with nothing to show.
+        if (remaining.length === 0) {
+          const replacement = newThread(true);
+          conversationIdRef.current = undefined;
+          return { activeThreadId: replacement.threadId, threads: [replacement] };
+        }
+        if (current.activeThreadId !== targetId) return { ...current, threads: remaining };
+        const next = sortAndCap(remaining)[0];
+        conversationIdRef.current = next.conversationId;
+        return { activeThreadId: next.threadId, threads: remaining };
+      });
+    },
+    [commitStore, queryClient],
+  );
 
   return {
     messages: historyQuery.data?.messages ?? [],
     threadId,
-    conversationId: thread.conversationId,
+    threads: store.threads,
+    switchThread,
+    deleteThread,
+    conversationId: thread?.conversationId,
     // `isPending` stays true for a disabled query, which would pin the skeleton
     // on a new thread; `isLoading` is pending *and* actually in flight.
     isLoadingHistory: historyQuery.isLoading,
