@@ -86,6 +86,8 @@ export function useChat() {
   const draftWrittenAtRef = useRef(0);
   // Read inside the query function, which must not be re-created when the
   // server id changes — that would refetch and defeat the point of threadId.
+  // Derived from state on every render and nowhere else, so switching threads
+  // updates it without any of the mutators having to remember to.
   const conversationIdRef = useRef(thread?.conversationId);
   conversationIdRef.current = thread?.conversationId;
 
@@ -416,7 +418,6 @@ export function useChat() {
     stopStreaming();
     clearDraft();
     const thread = newThread(true);
-    conversationIdRef.current = undefined;
     commitStore((current) => ({
       activeThreadId: thread.threadId,
       threads: [...current.threads, thread],
@@ -430,7 +431,6 @@ export function useChat() {
       stopStreaming();
       commitStore((current) => {
         if (!findThread(current, targetId)) return current;
-        conversationIdRef.current = findThread(current, targetId)?.conversationId;
         return {
           ...patchThread(current, targetId, { lastActiveAt: Date.now() }),
           activeThreadId: targetId,
@@ -448,13 +448,10 @@ export function useChat() {
         // Never end up with nothing to show.
         if (remaining.length === 0) {
           const replacement = newThread(true);
-          conversationIdRef.current = undefined;
           return { activeThreadId: replacement.threadId, threads: [replacement] };
         }
         if (current.activeThreadId !== targetId) return { ...current, threads: remaining };
-        const next = sortAndCap(remaining)[0];
-        conversationIdRef.current = next.conversationId;
-        return { activeThreadId: next.threadId, threads: remaining };
+        return { activeThreadId: sortAndCap(remaining)[0].threadId, threads: remaining };
       });
     },
     [commitStore, queryClient],
