@@ -6,8 +6,20 @@ export const API_BASE_URL = trimTrailingSlash(import.meta.env.VITE_API_BASE_URL 
 /** Easy Auth endpoints (`/.auth/me`, `/.auth/refresh`, `/.auth/login/aad`). */
 export const AUTH_BASE_URL = trimTrailingSlash(import.meta.env.VITE_AUTH_BASE_URL ?? '');
 
-export const AUTH_DEV_BYPASS = import.meta.env.VITE_AUTH_DEV_BYPASS === 'true';
-export const AUTH_DEV_TOKEN = import.meta.env.VITE_AUTH_DEV_TOKEN ?? '';
+/*
+ * Local-development escape hatch for machines with no Easy Auth host.
+ *
+ * Both are gated on `import.meta.env.DEV`, which Vite replaces with the literal
+ * `false` in a production build — so the branch is dead code that Rollup drops,
+ * and `VITE_AUTH_DEV_TOKEN` is never inlined into the bundle even if it is set
+ * in the build environment. Without the gate, a production build with the flag
+ * on would ship with the sign-in gate removed and a token embedded in the JS.
+ */
+export const AUTH_DEV_BYPASS =
+  import.meta.env.DEV && import.meta.env.VITE_AUTH_DEV_BYPASS === 'true';
+export const AUTH_DEV_TOKEN = import.meta.env.DEV
+  ? (import.meta.env.VITE_AUTH_DEV_TOKEN ?? '')
+  : '';
 
 /**
  * Azure Blob Storage accepts a single PUT up to 256 MiB, but a failed 50 MB+
