@@ -7,6 +7,7 @@ import type {
   Citation,
   ConfirmationRequest,
   FileAction,
+  MessageAttachment,
 } from '@/types';
 
 /* --------------------------------- history -------------------------------- */
@@ -43,9 +44,32 @@ function normaliseMessage(raw: unknown): ChatMessage | null {
     createdAt: String(record.createdAt ?? record.timestamp ?? new Date().toISOString()),
     status: 'complete',
     citations: normaliseCitations(record.citations ?? record.sources),
+    attachments: normaliseAttachments(record.attachments ?? record.files),
     confirmation: normaliseConfirmation(record.confirmation ?? record.pendingConfirmation),
     jobIds: Array.isArray(record.jobIds) ? record.jobIds.map(String) : undefined,
   };
+}
+
+/** Attachments echoed back by the history endpoint, so they survive a refresh. */
+function normaliseAttachments(raw: unknown): MessageAttachment[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const attachments = raw
+    .map((item): MessageAttachment | null => {
+      if (typeof item === 'string') return { fileName: item };
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const fileName = asString(record.fileName ?? record.name);
+      if (!fileName) return null;
+      return {
+        fileId: asString(record.fileId ?? record.id),
+        fileName,
+        size: typeof record.size === 'number' ? record.size : undefined,
+        blobPath: asString(record.blobPath ?? record.path),
+      };
+    })
+    .filter((item): item is MessageAttachment => item !== null);
+
+  return attachments.length > 0 ? attachments : undefined;
 }
 
 export function normaliseCitations(raw: unknown): Citation[] | undefined {
@@ -105,17 +129,19 @@ function asString(value: unknown): string | undefined {
 /* ---------------------------------- stream -------------------------------- */
 
 export type ChatStreamEvent =
-  | { type: 'start'; messageId?: string }
+  | { type: 'start'; messageId?: string; conversationId?: string }
   | { type: 'delta'; text: string }
   | { type: 'citations'; citations: Citation[] }
   | { type: 'confirmation'; confirmation: ConfirmationRequest }
   | { type: 'job'; jobId: string; action: FileAction; label?: string; fileName?: string }
   | { type: 'error'; message: string }
-  | { type: 'done'; messageId?: string };
+  | { type: 'done'; messageId?: string; conversationId?: string };
 
 export interface SendMessageArgs {
   message: string;
   conversationId?: string;
+  /** Files already staged in storage that this turn is about. */
+  attachments?: MessageAttachment[];
   signal?: AbortSignal;
   onEvent: (event: ChatStreamEvent) => void;
 }
@@ -129,6 +155,7 @@ export interface SendMessageArgs {
 export async function streamChatMessage({
   message,
   conversationId,
+  attachments,
   signal,
   onEvent,
 }: SendMessageArgs): Promise<void> {
@@ -136,7 +163,12 @@ export async function streamChatMessage({
   try {
     response = await api.raw('/api/chat/message', {
       method: 'POST',
-      body: { message, conversationId, stream: true },
+      body: {
+        message,
+        conversationId,
+        stream: true,
+        attachments: attachments?.length ? attachments : undefined,
+      },
       headers: { Accept: 'text/event-stream' },
       signal,
     });
@@ -187,7 +219,11 @@ function toStreamEvent(eventName: string, payload: unknown, rawData: string): Ch
   switch (name) {
     case 'start':
     case 'message_start':
-      return { type: 'start', messageId: asString(record.messageId ?? record.id) };
+      return {
+        type: 'start',
+        messageId: asString(record.messageId ?? record.id),
+        conversationId: asString(record.conversationId ?? record.threadId),
+      };
 
     case 'delta':
     case 'token':
@@ -238,7 +274,11 @@ function toStreamEvent(eventName: string, payload: unknown, rawData: string): Ch
     case 'end':
     case 'done':
     case 'complete':
-      return { type: 'done', messageId: asString(record.messageId ?? record.id) };
+      return {
+        type: 'done',
+        messageId: asString(record.messageId ?? record.id),
+        conversationId: asString(record.conversationId ?? record.threadId),
+      };
 
     default:
       return null;

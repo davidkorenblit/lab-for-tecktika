@@ -6,6 +6,8 @@ interface ConfirmationDialogProps {
   confirmation: ConfirmationRequest;
   onConfirm: () => void;
   onCancel: () => void;
+  /** How many more confirmations are queued behind this one. */
+  waiting?: number;
 }
 
 const ACTION_VERB: Record<ConfirmationRequest['action'], string> = {
@@ -20,20 +22,29 @@ const ACTION_VERB: Record<ConfirmationRequest['action'], string> = {
 /**
  * Modal confirmation for destructive work.
  *
- * The prompt names every affected file, and a single-file delete or replace
- * also asks the user to type the file name — a mis-click cannot destroy a
- * document, and the typed name proves the user read which one it was.
+ * The prompt names every affected file, and every destructive action asks the
+ * user to type a file name before the button unlocks — a mis-click cannot
+ * destroy a document, and the typed name proves the user read which one it was.
+ *
+ * This used to apply only when exactly one file was involved, which had it
+ * backwards: deleting five files was a single click while deleting one demanded
+ * typing. Bulk operations are the dangerous case, so they are gated too — every
+ * name is listed, and the name to type is the first in that list.
  */
-export function ConfirmationDialog({ confirmation, onConfirm, onCancel }: ConfirmationDialogProps) {
+export function ConfirmationDialog({
+  confirmation,
+  onConfirm,
+  onCancel,
+  waiting = 0,
+}: ConfirmationDialogProps) {
   const { action, summary, files, destructive } = confirmation;
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [typed, setTyped] = useState('');
 
-  const requiresTypedName =
-    destructive && files.length === 1 && (action === 'delete' || action === 'replace');
   const targetName = files[0]?.name ?? '';
+  const requiresTypedName = destructive && targetName.length > 0;
   const canConfirm = !requiresTypedName || typed.trim() === targetName;
 
   useEffect(() => {
@@ -121,7 +132,17 @@ export function ConfirmationDialog({ confirmation, onConfirm, onCancel }: Confir
 
         {requiresTypedName && (
           <label className="mt-3 block text-xs text-ink-muted">
-            Type <span className="font-semibold break-all text-ink">{targetName}</span> to confirm
+            {files.length === 1 ? (
+              <>
+                Type <span className="font-semibold break-all text-ink">{targetName}</span> to confirm
+              </>
+            ) : (
+              <>
+                Type the first file name,{' '}
+                <span className="font-semibold break-all text-ink">{targetName}</span>, to confirm all{' '}
+                {files.length}
+              </>
+            )}
             <input
               autoFocus
               value={typed}
@@ -134,7 +155,12 @@ export function ConfirmationDialog({ confirmation, onConfirm, onCancel }: Confir
           </label>
         )}
 
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-4 flex items-center justify-end gap-2">
+          {waiting > 0 && (
+            <span className="mr-auto text-[11px] text-ink-muted">
+              {waiting} more {waiting === 1 ? 'request' : 'requests'} after this
+            </span>
+          )}
           <button
             type="button"
             onClick={onCancel}

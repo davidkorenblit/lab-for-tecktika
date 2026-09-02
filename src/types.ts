@@ -49,6 +49,8 @@ export interface ChatMessage {
   createdAt: string;
   status?: MessageStatus;
   citations?: Citation[];
+  /** Files the user attached to this turn. The agent decides what to do with them. */
+  attachments?: MessageAttachment[];
   /** Present when the agent wants an explicit yes/no before acting. */
   confirmation?: ConfirmationRequest;
   /** Present when this turn kicked off background work. */
@@ -135,41 +137,40 @@ export interface UploadUrlRequest {
   fileName: string;
   contentType: string;
   size: number;
-  /** Set once the user has confirmed an overwrite. */
-  overwrite?: boolean;
 }
 
 export interface UploadUrlResponse {
   /** Presigned (SAS) URL the browser PUTs the bytes to. */
   uploadUrl: string;
+  /** Handle the agent uses to refer to the staged blob. */
   fileId?: string;
   blobPath?: string;
   expiresAt?: string;
-  /**
-   * Backend detected an existing file with the same name. The UI must confirm
-   * the overwrite — naming the file — before any bytes are sent.
-   */
-  requiresConfirmation?: ConfirmationRequest;
 }
 
-export type UploadPhase =
-  | 'idle'
-  | 'requesting-url'
-  | 'awaiting-confirmation'
-  | 'uploading'
-  | 'finalizing'
-  | 'done'
-  | 'error'
-  | 'cancelled';
+export type AttachmentPhase = 'requesting-url' | 'uploading' | 'ready' | 'error' | 'cancelled';
 
-export interface UploadTask {
+/**
+ * A file the user has attached to the composer. The bytes go to storage
+ * immediately so the send is instant, but nothing happens to the library until
+ * the message is sent and the agent decides what the file is for.
+ */
+export interface PendingAttachment {
   id: string;
   fileName: string;
   size: number;
-  phase: UploadPhase;
+  phase: AttachmentPhase;
   /** 0-100, bytes actually acknowledged by Azure Blob Storage. */
   progress: number;
+  fileId?: string;
+  blobPath?: string;
   error?: string;
-  jobId?: string;
-  confirmation?: ConfirmationRequest;
+}
+
+/** The slice of an attachment that rides along with the sent message. */
+export interface MessageAttachment {
+  fileId?: string;
+  fileName: string;
+  size?: number;
+  blobPath?: string;
 }

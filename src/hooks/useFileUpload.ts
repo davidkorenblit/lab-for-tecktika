@@ -1,184 +1,106 @@
 import { useCallback, useRef, useState } from 'react';
 import { uid } from '@/lib/format';
 import { uploadToPresignedUrl } from '@/services/blobUpload';
-import { confirmAction, finalizeUpload, requestUploadUrl } from '@/services/files';
-import { useJobs } from '@/providers/JobsProvider';
-import { describeJob } from './useChat';
-import type { ConfirmationRequest, UploadTask, UploadUrlResponse } from '@/types';
+import { requestUploadUrl } from '@/services/files';
+import type { MessageAttachment, PendingAttachment } from '@/types';
 
 /**
- * Two-step upload for large PDFs.
+ * Composer attachments.
  *
- *   1. POST /api/files/upload-url  -> short-lived SAS URL (no bytes through the API)
- *   2. PUT straight to storage     -> single shot, or staged blocks for 50 MB+
- *   3. POST /api/files/confirm-action -> backend indexes the file, returns a jobId
+ * Picking a file stages the bytes straight away — ask the API for a SAS URL,
+ * then PUT to storage, so a 50MB PDF is already in place by the time the user
+ * finishes typing and the send feels instant.
  *
- * If step 1 reports that the name is already taken, the upload parks in
- * `awaiting-confirmation` and nothing is sent until the user approves the
- * overwrite in a dialog that names the file.
+ * Staging is deliberately not the same thing as acting. Nothing reaches the
+ * SharePoint library here: the `fileId` rides along with the chat message, and
+ * the agent decides whether it is a new document, a replacement or an update —
+ * and comes back for confirmation if it is destructive.
  */
 export function useFileUpload() {
-  const { trackJob } = useJobs();
-  const [tasks, setTasks] = useState<UploadTask[]>([]);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const controllersRef = useRef<Map<string, AbortController>>(new Map());
-  const pendingFilesRef = useRef<Map<string, File>>(new Map());
 
-  const patchTask = useCallback((taskId: string, patch: Partial<UploadTask>) => {
-    setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, ...patch } : task)));
+  const patch = useCallback((id: string, changes: Partial<PendingAttachment>) => {
+    setAttachments((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...changes } : item)),
+    );
   }, []);
 
-  const runUpload = useCallback(
-    async (taskId: string, file: File, urlResponse: UploadUrlResponse) => {
+  const attachFile = useCallback(
+    async (file: File) => {
+      const id = uid('attachment');
+      setAttachments((current) => [
+        ...current,
+        { id, fileName: file.name, size: file.size, phase: 'requesting-url', progress: 0 },
+      ]);
+
       const controller = new AbortController();
-      controllersRef.current.set(taskId, controller);
+      controllersRef.current.set(id, controller);
 
       try {
-        patchTask(taskId, { phase: 'uploading', progress: 0, error: undefined });
+        const target = await requestUploadUrl({
+          fileName: file.name,
+          contentType: file.type || 'application/pdf',
+          size: file.size,
+        });
+
+        patch(id, { phase: 'uploading', progress: 0 });
 
         await uploadToPresignedUrl({
-          uploadUrl: urlResponse.uploadUrl,
+          uploadUrl: target.uploadUrl,
           file,
           signal: controller.signal,
-          onProgress: (percent) => patchTask(taskId, { progress: percent }),
+          onProgress: (percent) => patch(id, { progress: percent }),
         });
 
-        patchTask(taskId, { phase: 'finalizing', progress: 100 });
-
-        const result = await finalizeUpload({
-          fileId: urlResponse.fileId,
-          fileName: file.name,
-          blobPath: urlResponse.blobPath,
-          confirmationId: urlResponse.requiresConfirmation?.confirmationId,
+        patch(id, {
+          phase: 'ready',
+          progress: 100,
+          fileId: target.fileId,
+          blobPath: target.blobPath,
         });
-
-        if (result.jobId) {
-          // Indexing continues server-side; the tracked job is what the user
-          // follows from here, and it survives a refresh.
-          trackJob({
-            jobId: result.jobId,
-            action: 'upload',
-            label: describeJob('upload', file.name),
-            fileName: file.name,
-          });
-        }
-
-        patchTask(taskId, { phase: 'done', jobId: result.jobId });
       } catch (error) {
         if ((error as Error)?.name === 'AbortError') {
-          patchTask(taskId, { phase: 'cancelled' });
+          patch(id, { phase: 'cancelled' });
         } else {
-          patchTask(taskId, {
+          patch(id, {
             phase: 'error',
             error: error instanceof Error ? error.message : 'Upload failed',
           });
         }
       } finally {
-        controllersRef.current.delete(taskId);
-        pendingFilesRef.current.delete(taskId);
-      }
-    },
-    [patchTask, trackJob],
-  );
-
-  const startUpload = useCallback(
-    async (file: File) => {
-      const taskId = uid('upload');
-      setTasks((current) => [
-        ...current,
-        { id: taskId, fileName: file.name, size: file.size, phase: 'requesting-url', progress: 0 },
-      ]);
-      pendingFilesRef.current.set(taskId, file);
-
-      try {
-        const urlResponse = await requestUploadUrl({
-          fileName: file.name,
-          contentType: file.type || 'application/pdf',
-          size: file.size,
-        });
-
-        if (urlResponse.requiresConfirmation && !urlResponse.uploadUrl) {
-          // Overwrite detected — stop and ask, naming the file.
-          patchTask(taskId, {
-            phase: 'awaiting-confirmation',
-            confirmation: urlResponse.requiresConfirmation,
-          });
-          return taskId;
-        }
-
-        await runUpload(taskId, file, urlResponse);
-      } catch (error) {
-        patchTask(taskId, {
-          phase: 'error',
-          error: error instanceof Error ? error.message : 'Could not start the upload',
-        });
+        controllersRef.current.delete(id);
       }
 
-      return taskId;
+      return id;
     },
-    [patchTask, runUpload],
+    [patch],
   );
 
-  /** Called from the confirmation dialog once the user approves an overwrite. */
-  const confirmOverwrite = useCallback(
-    async (taskId: string, confirmation: ConfirmationRequest) => {
-      const file = pendingFilesRef.current.get(taskId);
-      if (!file) {
-        patchTask(taskId, { phase: 'error', error: 'The selected file is no longer available' });
-        return;
-      }
-
-      try {
-        patchTask(taskId, { phase: 'requesting-url', confirmation: undefined });
-
-        await confirmAction({
-          confirmationId: confirmation.confirmationId,
-          confirmed: true,
-          action: confirmation.action,
-          files: confirmation.files.map((entry) => entry.name),
-        });
-
-        const urlResponse = await requestUploadUrl({
-          fileName: file.name,
-          contentType: file.type || 'application/pdf',
-          size: file.size,
-          overwrite: true,
-        });
-
-        await runUpload(taskId, file, urlResponse);
-      } catch (error) {
-        patchTask(taskId, {
-          phase: 'error',
-          error: error instanceof Error ? error.message : 'Could not confirm the overwrite',
-        });
-      }
-    },
-    [patchTask, runUpload],
-  );
-
-  const declineOverwrite = useCallback(
-    async (taskId: string, confirmation: ConfirmationRequest) => {
-      patchTask(taskId, { phase: 'cancelled', confirmation: undefined });
-      pendingFilesRef.current.delete(taskId);
-      await confirmAction({
-        confirmationId: confirmation.confirmationId,
-        confirmed: false,
-        action: confirmation.action,
-        files: confirmation.files.map((entry) => entry.name),
-      }).catch(() => undefined);
-    },
-    [patchTask],
-  );
-
-  const cancelUpload = useCallback((taskId: string) => {
-    controllersRef.current.get(taskId)?.abort();
+  const removeAttachment = useCallback((id: string) => {
+    controllersRef.current.get(id)?.abort();
+    controllersRef.current.delete(id);
+    setAttachments((current) => current.filter((item) => item.id !== id));
   }, []);
 
-  const dismissTask = useCallback((taskId: string) => {
-    controllersRef.current.get(taskId)?.abort();
-    controllersRef.current.delete(taskId);
-    pendingFilesRef.current.delete(taskId);
-    setTasks((current) => current.filter((task) => task.id !== taskId));
+  /** Called once a message carrying these attachments has been sent. */
+  const clearAttachments = useCallback(() => {
+    for (const controller of controllersRef.current.values()) controller.abort();
+    controllersRef.current.clear();
+    setAttachments([]);
   }, []);
 
-  return { tasks, startUpload, cancelUpload, dismissTask, confirmOverwrite, declineOverwrite };
+  return { attachments, attachFile, removeAttachment, clearAttachments };
+}
+
+/** Only staged files can be sent; anything still uploading or failed is dropped. */
+export function toMessageAttachments(attachments: PendingAttachment[]): MessageAttachment[] {
+  return attachments
+    .filter((item) => item.phase === 'ready')
+    .map((item) => ({
+      fileId: item.fileId,
+      fileName: item.fileName,
+      size: item.size,
+      blobPath: item.blobPath,
+    }));
 }

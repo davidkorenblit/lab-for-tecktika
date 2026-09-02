@@ -1,4 +1,4 @@
-import { cx, formatTime } from '@/lib/format';
+import { cx, formatBytes, formatTime } from '@/lib/format';
 import { CitationList } from './CitationList';
 import { ConfirmationCard } from './ConfirmationCard';
 import { MessageJobStatus } from './MessageJobStatus';
@@ -31,6 +31,25 @@ export function MessageBubble({ message, onConfirm, onDecline }: MessageBubblePr
           <p className="mt-2 text-xs text-danger">{message.error}</p>
         )}
       </div>
+
+      {message.attachments && message.attachments.length > 0 && (
+        <ul className={cx('flex max-w-[85%] flex-wrap gap-1.5', isUser && 'justify-end')}>
+          {message.attachments.map((attachment) => (
+            <li
+              key={attachment.fileId ?? attachment.fileName}
+              className="flex items-center gap-1.5 rounded-lg border border-line bg-surface-raised px-2 py-1 text-xs"
+            >
+              <span aria-hidden>📄</span>
+              <span className="max-w-56 truncate font-medium" title={attachment.fileName}>
+                {attachment.fileName}
+              </span>
+              {attachment.size !== undefined && (
+                <span className="text-[10px] text-ink-muted">{formatBytes(attachment.size)}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {message.citations && message.citations.length > 0 && (
         <CitationList citations={message.citations} />

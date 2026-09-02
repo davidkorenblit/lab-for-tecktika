@@ -18,7 +18,20 @@ export const UPLOAD_SINGLE_SHOT_LIMIT = 32 * 1024 * 1024;
 export const UPLOAD_BLOCK_CONCURRENCY = 3;
 
 export const JOBS_STORAGE_KEY = 'ai-agent-chat.jobs.v1';
-export const CONVERSATION_STORAGE_KEY = 'ai-agent-chat.conversation.v1';
+/** `{ threadId, conversationId }` — see the identity note in useChat. */
+export const THREAD_STORAGE_KEY = 'ai-agent-chat.thread.v2';
+/** Partial assistant reply, kept so a refresh mid-stream does not lose it. */
+export const STREAM_DRAFT_STORAGE_KEY = 'ai-agent-chat.stream-draft.v1';
+
+/**
+ * How often the in-flight reply is written to localStorage. Deltas flush once
+ * per frame; persisting at that rate would mean ~60 synchronous writes a second
+ * for no benefit, so the draft lags by at most this much.
+ */
+export const STREAM_DRAFT_PERSIST_MS = 1_000;
+
+/** Older drafts are ignored: a week-old fragment is noise, not a recovery. */
+export const STREAM_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** Poll fast at first, then back off so long-running indexing jobs stay cheap. */
 export const JOB_POLL_INTERVAL_MS = 2_000;

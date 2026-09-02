@@ -20,6 +20,9 @@ export const queryClient = new QueryClient({
 
 export const queryKeys = {
   session: ['auth', 'session'] as const,
-  chatHistory: (conversationId?: string) => ['chat', 'history', conversationId ?? 'default'] as const,
+  // Keyed on the client-minted threadId, never the server's conversationId —
+  // the server id can arrive or change mid-stream, and moving the cache entry
+  // underneath a running stream loses its messages.
+  chatHistory: (threadId: string) => ['chat', 'history', threadId] as const,
   jobStatus: (jobId: string) => ['jobs', 'status', jobId] as const,
 };

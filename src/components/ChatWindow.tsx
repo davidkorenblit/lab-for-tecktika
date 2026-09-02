@@ -1,10 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useChat } from '@/hooks/useChat';
-import { useFileUpload } from '@/hooks/useFileUpload';
+import { toMessageAttachments, useFileUpload } from '@/hooks/useFileUpload';
+import { useConfirmationQueue } from '@/hooks/useConfirmationQueue';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { JobTray } from './JobTray';
-import { UploadPanel } from './UploadPanel';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import type { ConfirmationRequest } from '@/types';
 
@@ -28,19 +28,10 @@ export function ChatWindow() {
     startNewConversation,
   } = useChat();
 
-  const upload = useFileUpload();
+  const { attachments, attachFile, removeAttachment, clearAttachments } = useFileUpload();
+  const queue = useConfirmationQueue();
   const [confirmError, setConfirmError] = useState<string | null>(null);
-  const [pendingMessageConfirmation, setPendingMessageConfirmation] = useState<{
-    messageId: string;
-    confirmation: ConfirmationRequest;
-  } | null>(null);
   const busyConfirmations = useRef(new Set<string>());
-
-  // An upload that hit an existing file name is parked until the user answers.
-  const overwriteTask = useMemo(
-    () => upload.tasks.find((task) => task.phase === 'awaiting-confirmation' && task.confirmation),
-    [upload.tasks],
-  );
 
   const handleConfirmationDecision = useCallback(
     async (messageId: string, confirmation: ConfirmationRequest, decision: 'confirmed' | 'declined') => {
@@ -49,7 +40,6 @@ export function ChatWindow() {
       setConfirmError(null);
       try {
         await respondToConfirmation(messageId, confirmation, decision);
-        setPendingMessageConfirmation(null);
       } catch (error) {
         setConfirmError(error instanceof Error ? error.message : 'Could not send your confirmation');
       } finally {
@@ -57,6 +47,15 @@ export function ChatWindow() {
       }
     },
     [respondToConfirmation],
+  );
+
+  const handleSend = useCallback(
+    (text: string) => {
+      const ready = toMessageAttachments(attachments);
+      void sendMessage(text, ready);
+      clearAttachments();
+    },
+    [attachments, clearAttachments, sendMessage],
   );
 
   return (
@@ -70,18 +69,12 @@ export function ChatWindow() {
         onConfirm={(messageId, confirmation) =>
           // Destructive actions get the modal; the rest resolve inline.
           confirmation.destructive
-            ? setPendingMessageConfirmation({ messageId, confirmation })
+            ? queue.enqueue({ messageId, confirmation })
             : void handleConfirmationDecision(messageId, confirmation, 'confirmed')
         }
         onDecline={(messageId, confirmation) =>
           void handleConfirmationDecision(messageId, confirmation, 'declined')
         }
-      />
-
-      <UploadPanel
-        tasks={upload.tasks}
-        onCancel={upload.cancelUpload}
-        onDismiss={upload.dismissTask}
       />
 
       {(streamError || confirmError) && (
@@ -94,35 +87,28 @@ export function ChatWindow() {
 
       <Composer
         isStreaming={isStreaming}
-        onSend={(text) => void sendMessage(text)}
+        attachments={attachments}
+        onSend={handleSend}
         onStop={stopStreaming}
-        onSelectFile={(file) => void upload.startUpload(file)}
+        onAttachFile={(file) => void attachFile(file)}
+        onRemoveAttachment={removeAttachment}
         onNewConversation={startNewConversation}
       />
 
       <JobTray />
 
-      {/* Destructive confirmation from the agent. */}
-      {pendingMessageConfirmation && (
+      {/* Exactly one confirmation is ever on screen; the rest wait their turn. */}
+      {queue.current && (
         <ConfirmationDialog
-          confirmation={pendingMessageConfirmation.confirmation}
-          onConfirm={() =>
-            void handleConfirmationDecision(
-              pendingMessageConfirmation.messageId,
-              pendingMessageConfirmation.confirmation,
-              'confirmed',
-            )
-          }
-          onCancel={() => setPendingMessageConfirmation(null)}
-        />
-      )}
-
-      {/* Overwrite confirmation raised by the upload flow. */}
-      {overwriteTask?.confirmation && (
-        <ConfirmationDialog
-          confirmation={overwriteTask.confirmation}
-          onConfirm={() => void upload.confirmOverwrite(overwriteTask.id, overwriteTask.confirmation!)}
-          onCancel={() => void upload.declineOverwrite(overwriteTask.id, overwriteTask.confirmation!)}
+          key={queue.current.confirmation.confirmationId}
+          confirmation={queue.current.confirmation}
+          waiting={queue.waiting}
+          onConfirm={() => {
+            const { messageId, confirmation } = queue.current!;
+            queue.resolveCurrent();
+            void handleConfirmationDecision(messageId, confirmation, 'confirmed');
+          }}
+          onCancel={queue.resolveCurrent}
         />
       )}
     </div>
