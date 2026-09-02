@@ -38,6 +38,51 @@ if [ -z "$SP_ID" ]; then
   NEWLY_CREATED_SP=true
 fi
 
+# GitHub's actual OIDC subject claim is 'repo:<owner>@<ownerId>/<repo>@<repoId>:...'
+# (immutable numeric IDs, not just the slug) - using the plain slug here causes
+# az/login to fail in the workflow with AADSTS700213 "No matching federated
+# identity record" even though the subject looks like it should match. Resolve
+# the real IDs via the GitHub API so the credential actually matches.
+resolve_subject_repo() {
+  local repo="$1" json result
+  json=$(curl -sf "https://api.github.com/repos/${repo}") || { echo ""; return; }
+
+  if command -v jq >/dev/null 2>&1; then
+    result=$(echo "$json" | jq -r '"\(.owner.login)@\(.owner.id)/\(.name)@\(.id)"' 2>/dev/null)
+    [ -n "$result" ] && { echo "$result"; return; }
+  fi
+
+  # Try both interpreter names and actually verify the output, rather than
+  # trusting `command -v`: on plain Git-for-Windows setups `python3` often
+  # resolves to the Microsoft Store app-execution-alias stub, which exists on
+  # PATH, does nothing useful, and exits nonzero - `command -v` can't tell it
+  # apart from a real interpreter, so we check the real output instead.
+  local py
+  for py in python3 python; do
+    if command -v "$py" >/dev/null 2>&1; then
+      result=$(echo "$json" | "$py" -c "import json,sys
+d=json.load(sys.stdin)
+print('%s@%s/%s@%s' % (d['owner']['login'], d['owner']['id'], d['name'], d['id']))" 2>/dev/null)
+      [ -n "$result" ] && { echo "$result"; return; }
+    fi
+  done
+
+  echo ""
+}
+
+echo "==> Resolving GitHub's immutable owner/repo IDs for the OIDC subject"
+SUBJECT_REPO=$(resolve_subject_repo "$GITHUB_REPO")
+if [ -n "$SUBJECT_REPO" ]; then
+  echo "    using: $SUBJECT_REPO"
+else
+  echo "    WARNING: could not resolve owner/repo IDs (rate-limited, private repo needing auth, or no jq/python available)."
+  echo "    Falling back to the plain slug '$GITHUB_REPO'. If the workflow later fails with AADSTS700213 'No"
+  echo "    matching federated identity record', GitHub is asserting the owner@id/repo@id form instead - re-run"
+  echo "    this script once jq/python is available, or update the federated credential subject in Entra ID"
+  echo "    manually to match whatever subject that error message reports."
+  SUBJECT_REPO="$GITHUB_REPO"
+fi
+
 echo "==> Configuring federated credentials for $GITHUB_REPO"
 
 # Creates a federated credential, treating "already exists" as success and any
@@ -63,11 +108,11 @@ create_federated_credential() {
 # Matches deploy-infra.yml's `environment: dev` job setting — GitHub issues the OIDC
 # token with an environment-scoped subject whenever a job declares `environment:`,
 # regardless of which branch or trigger fired it.
-create_federated_credential "gh-environment-${GH_ENVIRONMENT}" "repo:${GITHUB_REPO}:environment:${GH_ENVIRONMENT}"
+create_federated_credential "gh-environment-${GH_ENVIRONMENT}" "repo:${SUBJECT_REPO}:environment:${GH_ENVIRONMENT}"
 
 # Fallback credential in case the `environment:` block is ever removed from the
 # workflow, so plain pushes to main keep working without re-running this script.
-create_federated_credential "gh-branch-main" "repo:${GITHUB_REPO}:ref:refs/heads/main"
+create_federated_credential "gh-branch-main" "repo:${SUBJECT_REPO}:ref:refs/heads/main"
 
 echo "==> Granting least-privilege roles on '$RESOURCE_GROUP' only (not the whole subscription)"
 RG_ID=$(az group show --name "$RESOURCE_GROUP" --query id -o tsv)
