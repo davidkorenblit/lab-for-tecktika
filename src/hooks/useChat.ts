@@ -43,6 +43,15 @@ import type {
 interface PersistedThread {
   threadId: string;
   conversationId?: string;
+  /**
+   * The user asked for a new conversation and the backend has not named it yet.
+   *
+   * There is no endpoint to create one up front, and asking `/api/chat/history`
+   * without an id returns the most recent conversation — which is exactly the
+   * one being left behind. So a fresh thread simply does not load history; the
+   * first message is what brings the server-side conversation into existence.
+   */
+  fresh?: boolean;
 }
 
 /** An assistant reply that was still streaming when the page went away. */
@@ -89,7 +98,8 @@ export function useChat() {
     if (!conversationId) return;
     setThread((current) => {
       if (current.conversationId === conversationId) return current;
-      const next = { ...current, conversationId };
+      // Named by the server: it exists now, so history applies again.
+      const next: PersistedThread = { threadId: current.threadId, conversationId };
       writeJson(THREAD_STORAGE_KEY, next);
       return next;
     });
@@ -148,6 +158,7 @@ export function useChat() {
 
       return { ...response, messages: [...response.messages, ...recovered, ...localOnly] };
     },
+    enabled: !thread.fresh,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   });
@@ -380,18 +391,21 @@ export function useChat() {
    */
   const startNewConversation = useCallback(() => {
     stopStreaming();
+    clearDraft();
     queryClient.removeQueries({ queryKey: queryKeys.chatHistory(threadId) });
-    const next: PersistedThread = { threadId: uid('thread') };
+    const next: PersistedThread = { threadId: uid('thread'), fresh: true };
     writeJson(THREAD_STORAGE_KEY, next);
     conversationIdRef.current = undefined;
     setThread(next);
-  }, [queryClient, stopStreaming, threadId]);
+  }, [clearDraft, queryClient, stopStreaming, threadId]);
 
   return {
     messages: historyQuery.data?.messages ?? [],
     threadId,
     conversationId: thread.conversationId,
-    isLoadingHistory: historyQuery.isPending,
+    // `isPending` stays true for a disabled query, which would pin the skeleton
+    // on a new thread; `isLoading` is pending *and* actually in flight.
+    isLoadingHistory: historyQuery.isLoading,
     historyError: historyQuery.error as Error | null,
     refetchHistory: historyQuery.refetch,
     isStreaming,
