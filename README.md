@@ -101,6 +101,16 @@ Then set the printed `entraTenantId` / `entraApiClientId` in `infrastructure/mai
 
 To tear everything down: `az group delete --name rg-ragpoc-dev`.
 
+### Enabling automatic deploys from GitHub Actions
+
+`deploy-infra.yml` logs into Azure via OIDC (no client secret ever generated or stored). Wire it up once:
+
+```bash
+./register-github-oidc.sh <your-github-owner>/<your-repo> rg-ragpoc-dev swedencentral dev
+```
+
+This creates a dedicated app registration + federated credential trusting this repo, and grants it `Contributor` + `Role Based Access Control Administrator` scoped to just that resource group (not the whole subscription). It prints the three values to add as GitHub Actions secrets (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) plus the `AZURE_RESOURCE_GROUP` repo variable — and the `gh` CLI commands to set them directly if you have it authenticated. It also expects a GitHub environment named `dev` to exist (Settings → Environments).
+
 ## Running the backend / worker / frontend
 
 Local dev and app-level setup for each service lives in its own folder (`backend/`, `worker/`, `frontend/`) and is still in progress — see each folder's `.env.example` for the configuration it expects once implemented, and `docker-compose.local.yml` for local Azurite emulation.
