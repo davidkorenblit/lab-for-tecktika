@@ -17,8 +17,6 @@ param searchSkuName = 'basic'
 // and updates the Container App's revision.
 param backendContainerImage = 'mcr.microsoft.com/k8se/quickstart:latest'
 
-// Fill these in after running `az ad app create` for the Entra ID App Registration
-// (see infrastructure/scripts/deploy.sh). Left blank, the backend simply has no
-// tenant/client configured yet — auth wiring happens once the registration exists.
-param entraTenantId = ''
-param entraApiClientId = ''
+// From register-entra-app.sh (Entra ID App Registration for user sign-in).
+param entraTenantId = '6fc8a795-8bcb-4e52-8b36-41c1971e6816'
+param entraApiClientId = '7267f8e7-50eb-4247-88b7-da2cc3adf6f6'

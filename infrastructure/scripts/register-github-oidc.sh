@@ -31,42 +31,86 @@ else
 fi
 
 SP_ID=$(az ad sp list --filter "appId eq '$APP_ID'" --query "[0].id" -o tsv)
+NEWLY_CREATED_SP=false
 if [ -z "$SP_ID" ]; then
   echo "==> Creating service principal for the app"
   SP_ID=$(az ad sp create --id "$APP_ID" --query id -o tsv)
+  NEWLY_CREATED_SP=true
 fi
 
 echo "==> Configuring federated credentials for $GITHUB_REPO"
+
+# Creates a federated credential, treating "already exists" as success and any
+# other error as a real failure that aborts the script (rather than a bare
+# `|| echo` that would mis-report a genuine error as a harmless duplicate).
+create_federated_credential() {
+  local name="$1" subject="$2"
+  output=$(az ad app federated-credential create --id "$APP_ID" --parameters "{
+    \"name\": \"${name}\",
+    \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"${subject}\",
+    \"audiences\": [\"api://AzureADTokenExchange\"]
+  }" 2>&1) && { echo "    created: $name"; return 0; }
+  if echo "$output" | grep -qi "already exists"; then
+    echo "    already exists: $name"
+    return 0
+  fi
+  echo "ERROR: failed to create federated credential '$name':" >&2
+  echo "$output" >&2
+  exit 1
+}
+
 # Matches deploy-infra.yml's `environment: dev` job setting — GitHub issues the OIDC
 # token with an environment-scoped subject whenever a job declares `environment:`,
 # regardless of which branch or trigger fired it.
-az ad app federated-credential create --id "$APP_ID" --parameters "{
-  \"name\": \"gh-environment-${GH_ENVIRONMENT}\",
-  \"issuer\": \"https://token.actions.githubusercontent.com\",
-  \"subject\": \"repo:${GITHUB_REPO}:environment:${GH_ENVIRONMENT}\",
-  \"audiences\": [\"api://AzureADTokenExchange\"]
-}" --output none 2>/dev/null || echo "    (already exists, skipping)"
+create_federated_credential "gh-environment-${GH_ENVIRONMENT}" "repo:${GITHUB_REPO}:environment:${GH_ENVIRONMENT}"
 
 # Fallback credential in case the `environment:` block is ever removed from the
 # workflow, so plain pushes to main keep working without re-running this script.
-az ad app federated-credential create --id "$APP_ID" --parameters "{
-  \"name\": \"gh-branch-main\",
-  \"issuer\": \"https://token.actions.githubusercontent.com\",
-  \"subject\": \"repo:${GITHUB_REPO}:ref:refs/heads/main\",
-  \"audiences\": [\"api://AzureADTokenExchange\"]
-}" --output none 2>/dev/null || echo "    (already exists, skipping)"
+create_federated_credential "gh-branch-main" "repo:${GITHUB_REPO}:ref:refs/heads/main"
 
 echo "==> Granting least-privilege roles on '$RESOURCE_GROUP' only (not the whole subscription)"
 RG_ID=$(az group show --name "$RESOURCE_GROUP" --query id -o tsv)
 
+# A service principal just created can take up to ~30-60s to replicate through
+# Entra ID; assigning a role to it before that finishes fails with
+# "PrincipalNotFound", which looks identical to a real error. Give it a head
+# start rather than silently mis-reporting a transient failure as success.
+if [ "$NEWLY_CREATED_SP" = true ]; then
+  echo "    (new service principal, waiting ~20s for Entra ID replication)"
+  sleep 20
+fi
+
+# Retries on PrincipalNotFound (replication lag); treats "already exists" as
+# success; any other error is a real failure and aborts the script instead of
+# silently claiming the role is in place.
+assign_role() {
+  local role="$1"
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    output=$(az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal \
+      --role "$role" --scope "$RG_ID" 2>&1) && { echo "    granted: $role"; return 0; }
+    if echo "$output" | grep -qi "RoleAssignmentExists"; then
+      echo "    already assigned: $role"
+      return 0
+    fi
+    if echo "$output" | grep -qi "PrincipalNotFound" && [ "$attempt" -lt 5 ]; then
+      echo "    principal not yet replicated, retrying ($attempt/5)..."
+      sleep 10
+      continue
+    fi
+    echo "ERROR: failed to assign role '$role':" >&2
+    echo "$output" >&2
+    exit 1
+  done
+}
+
 # Contributor to create/update resources...
-az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal \
-  --role "Contributor" --scope "$RG_ID" --output none 2>/dev/null || echo "    (Contributor already assigned)"
+assign_role "Contributor"
 
 # ...plus RBAC Administrator, because role_assignments.bicep creates role assignments,
 # and Contributor alone cannot grant Microsoft.Authorization/roleAssignments/write.
-az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal \
-  --role "Role Based Access Control Administrator" --scope "$RG_ID" --output none 2>/dev/null || echo "    (RBAC Administrator already assigned)"
+assign_role "Role Based Access Control Administrator"
 
 TENANT_ID=$(az account show --query tenantId -o tsv)
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
