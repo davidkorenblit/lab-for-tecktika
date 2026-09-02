@@ -58,8 +58,8 @@ Full justification for every resource choice (and the alternatives rejected) liv
 
 | Layer | Status |
 |---|---|
-| Infrastructure (Bicep) | ✅ Implemented — deployable end to end |
-| Infra CI/CD (`deploy-infra.yml`) | ✅ Implemented (OIDC, no stored secrets) |
+| Infrastructure (Bicep) | ✅ Deployed and verified live in Azure (`rg-sharepoint-rag-dev`) |
+| Infra CI/CD (`deploy-infra.yml`) | ✅ Verified end to end: OIDC login → deploy → outputs, no stored secrets |
 | Backend (FastAPI agent) | 🚧 Scaffolded, not yet implemented |
 | Worker (Azure Functions) | 🚧 Scaffolded, not yet implemented |
 | Frontend (React) | 🚧 Scaffolded, not yet implemented |
@@ -76,7 +76,7 @@ Full justification for every resource choice (and the alternatives rejected) liv
 
 Everything in Azure is defined as code under [`infrastructure/`](infrastructure/) and is reproducible from an empty resource group.
 
-**Prerequisites**: an Azure subscription, [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) with the Bicep extension (`az bicep install`), and `jq` if you want the generated `.env` hand-off file.
+**Prerequisites**: an Azure subscription and [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) with the Bicep extension (`az bicep install`). `register-github-oidc.sh` additionally wants `jq` or `python`/`python3` on `PATH` to resolve GitHub's repo ID for the OIDC subject (see gotchas below) — falls back to a warning and the plain slug if neither is found.
 
 ```bash
 az login
@@ -97,9 +97,20 @@ To wire up sign-in:
 ./register-entra-app.sh ragpoc-dev https://<your-static-web-app-hostname> http://localhost:5173
 ```
 
-Then set the printed `entraTenantId` / `entraApiClientId` in `infrastructure/main.bicepparam` and re-run `deploy.sh` so the backend picks them up.
+Then set the printed `entraTenantId` / `entraApiClientId` in `infrastructure/main.bicepparam` and re-run `deploy.sh` so the backend picks them up. (`main.bicepparam` currently commits the team's shared dev values for `rg-sharepoint-rag-dev` — if you're standing up a *separate* environment, run `register-entra-app.sh` yourself and use your own output instead of reusing these.)
 
 To tear everything down: `az group delete --name rg-ragpoc-dev`.
+
+### Gotchas hit deploying this for real (not just compiling)
+
+Bicep compiling cleanly says nothing about whether Azure will actually accept it — these only surfaced once we deployed against a live subscription:
+
+- **Model SKU ≠ portable across regions/subscriptions.** `gpt-4o` on `GlobalStandard` had 0 quota on a fresh subscription (`Standard` had default quota instead); `text-embedding-3-small` doesn't support `Standard` at all in `swedencentral` (only `GlobalStandard`/`DataZoneStandard`). Check `az cognitiveservices usage list --location <region>` before assuming a SKU is available.
+- **Static Web Apps only deploys to a short region list** (`centralus`, `eastus2`, `westus2`, `westeurope`, `eastasia` as of writing) — and even one of those can be temporarily closed to new customers. It needs its own location param, separate from everything else.
+- **Container App names cap at 32 characters.** A `baseName` that's fine for every other resource type can silently overflow once you prefix it with something like `ca-backend-`.
+- **GitHub's OIDC subject claim uses immutable IDs, not the slug**: `repo:<owner>@<ownerId>/<repo>@<repoId>:...`, not `repo:<owner>/<repo>:...`. A federated credential registered with the plain slug fails in CI with `AADSTS700213: No matching federated identity record` even though every value looks correct. `register-github-oidc.sh` resolves the real IDs via the GitHub API now.
+- **A just-created service principal isn't immediately usable.** Assigning it a role right after `az ad sp create` can fail with `PrincipalNotFound` for ~20s while Entra ID replicates — looks identical to a permissions problem. `register-github-oidc.sh` retries instead of failing.
+- **On Windows, `python3` may not be Python.** Plain Git-for-Windows Git Bash resolves `python3` to the Microsoft Store app-execution-alias stub (exists on `PATH`, does nothing, exits code 49), while `python` is the real interpreter. `command -v` can't tell them apart — only running it and checking output can.
 
 ### Enabling automatic deploys from GitHub Actions
 
