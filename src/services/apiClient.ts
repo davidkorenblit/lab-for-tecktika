@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '@/config';
-import { clearCachedSession, getAccessToken, refreshSession } from './auth';
+import { clearCachedSession, getAccessToken, loginUrl, refreshSession } from './auth';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -28,10 +28,28 @@ function resolveUrl(path: string): string {
   return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+const isAuthFailure = (status: number) => status === 401 || status === 403;
+
+/** Guards against bouncing between the app and the identity provider. */
+let redirectingToLogin = false;
+
+function redirectToLogin(): void {
+  if (redirectingToLogin) return;
+  redirectingToLogin = true;
+  const here = `${window.location.pathname}${window.location.search}`;
+  window.location.assign(loginUrl('aad', here));
+}
+
 /**
  * The single choke point every API call goes through — this is the
  * "interceptor". It attaches the Easy Auth bearer token, sends the auth cookie,
- * and on a 401 refreshes the session once and replays the request.
+ * and on a rejected request refreshes the session once and replays it.
+ *
+ * If the replay is rejected too, the session is genuinely gone and the user is
+ * sent to sign in rather than being shown "Request failed with status 401".
+ * The exception is a 403 for someone who *is* signed in: that is a permissions
+ * problem, and bouncing them to a provider that will happily sign them in again
+ * would loop forever, so it surfaces as an error instead.
  */
 export async function authorizedFetch(path: string, options: RequestOptions = {}): Promise<Response> {
   const { body, noRetry, headers, ...rest } = options;
@@ -61,10 +79,14 @@ export async function authorizedFetch(path: string, options: RequestOptions = {}
 
   let response = await send(await getAccessToken());
 
-  if (response.status === 401 && !noRetry) {
+  if (isAuthFailure(response.status) && !noRetry) {
     clearCachedSession();
     const refreshed = await refreshSession();
     response = await send(refreshed.token);
+
+    if (isAuthFailure(response.status) && !(response.status === 403 && refreshed.principal)) {
+      redirectToLogin();
+    }
   }
 
   return response;

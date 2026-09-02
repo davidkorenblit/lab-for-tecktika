@@ -1,5 +1,6 @@
 import { cx, formatBytes, formatTime } from '@/lib/format';
 import { CitationList } from './CitationList';
+import { MessageContent } from './MessageContent';
 import { ConfirmationCard } from './ConfirmationCard';
 import { MessageJobStatus } from './MessageJobStatus';
 import type { ChatMessage, ConfirmationRequest } from '@/types';
@@ -18,14 +19,15 @@ export function MessageBubble({ message, onConfirm, onDecline }: MessageBubblePr
     <div className={cx('flex flex-col gap-2', isUser ? 'items-end' : 'items-start')}>
       <div
         className={cx(
-          'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words',
+          'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed break-words',
+          // What the user typed is shown verbatim; the agent answers in markdown.
           isUser
-            ? 'bg-brand text-white rounded-br-sm'
+            ? 'bg-brand text-white rounded-br-sm whitespace-pre-wrap'
             : 'border border-line bg-surface-raised rounded-bl-sm',
           message.status === 'error' && 'border-danger/40 bg-danger-soft',
         )}
       >
-        {message.content}
+        {isUser ? message.content : <MessageContent content={message.content} />}
         {isStreaming && <span className="stream-caret" aria-hidden />}
         {message.status === 'error' && message.error && (
           <p className="mt-2 text-xs text-danger">{message.error}</p>

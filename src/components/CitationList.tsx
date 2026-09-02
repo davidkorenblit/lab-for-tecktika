@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { cx } from '@/lib/format';
 import type { Citation } from '@/types';
 
@@ -9,6 +9,17 @@ import type { Citation } from '@/types';
  */
 export function CitationList({ citations }: { citations: Citation[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
+
+  // Azure AI Search `@search.score` is a relevance score, not a probability —
+  // it is unbounded, so treating it as a fraction rendered "1240% match".
+  // Ranking each source against the best one in the set is a claim the number
+  // can actually support.
+  const bestScore = useMemo(() => {
+    const scores = citations
+      .map((citation) => citation.score)
+      .filter((score): score is number => typeof score === 'number' && score > 0);
+    return scores.length > 0 ? Math.max(...scores) : undefined;
+  }, [citations]);
 
   return (
     <div className="max-w-[85%]">
@@ -44,12 +55,19 @@ export function CitationList({ citations }: { citations: Citation[] }) {
         })}
       </div>
 
-      {openId && <CitationDetail citation={citations.find((c) => c.id === openId)!} />}
+      {openId && (
+        <CitationDetail citation={citations.find((c) => c.id === openId)!} bestScore={bestScore} />
+      )}
     </div>
   );
 }
 
-function CitationDetail({ citation }: { citation: Citation }) {
+function CitationDetail({ citation, bestScore }: { citation: Citation; bestScore?: number }) {
+  const relative =
+    citation.score !== undefined && bestScore !== undefined && bestScore > 0
+      ? Math.round((citation.score / bestScore) * 100)
+      : undefined;
+
   return (
     <div className="mt-2 rounded-xl border border-line bg-surface-raised p-3 text-xs">
       <div className="flex items-start justify-between gap-3">
@@ -59,9 +77,12 @@ function CitationDetail({ citation }: { citation: Citation }) {
             <p className="truncate text-ink-muted">{citation.fileName}</p>
           )}
         </div>
-        {citation.score !== undefined && (
-          <span className="shrink-0 rounded bg-line/60 px-1.5 py-0.5 text-[10px] text-ink-muted">
-            {Math.round(citation.score * 100)}% match
+        {relative !== undefined && (
+          <span
+            className="shrink-0 rounded bg-line/60 px-1.5 py-0.5 text-[10px] text-ink-muted"
+            title={`Relevance ${citation.score} — ${relative}% of the top result in this answer`}
+          >
+            {relative}% of top
           </span>
         )}
       </div>

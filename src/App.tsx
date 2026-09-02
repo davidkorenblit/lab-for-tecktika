@@ -1,6 +1,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { AppHeader } from '@/components/AppHeader';
 import { ChatWindow } from '@/components/ChatWindow';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SignInScreen } from '@/components/SignInScreen';
 import { AUTH_DEV_BYPASS } from '@/config';
 
@@ -27,7 +28,9 @@ export default function App() {
   return (
     <div className="flex h-full flex-col bg-surface text-ink">
       <AppHeader principal={principal} logoutUrl={logoutUrl} />
-      <ChatWindow />
+      <ErrorBoundary>
+        <ChatWindow />
+      </ErrorBoundary>
     </div>
   );
 }
