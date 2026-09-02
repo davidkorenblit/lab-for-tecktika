@@ -19,10 +19,6 @@ const EXPIRY_SKEW_MS = 60_000;
 let cachedSession: AuthSession | null = null;
 let inflight: Promise<AuthSession> | null = null;
 
-export function getCachedSession(): AuthSession | null {
-  return cachedSession;
-}
-
 export function clearCachedSession(): void {
   cachedSession = null;
   inflight = null;

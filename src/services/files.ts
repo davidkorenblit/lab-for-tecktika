@@ -1,10 +1,5 @@
 import { api } from './apiClient';
-import type {
-  ConfirmActionResponse,
-  ConfirmationRequest,
-  UploadUrlRequest,
-  UploadUrlResponse,
-} from '@/types';
+import type { ConfirmActionResponse, UploadUrlRequest, UploadUrlResponse } from '@/types';
 
 /**
  * Asks the API for a short-lived SAS URL and a handle for the staged blob.
@@ -53,11 +48,6 @@ export async function confirmAction(input: ConfirmActionInput): Promise<ConfirmA
     status: asString(record.status ?? record.state),
     message: asString(record.message),
   };
-}
-
-/** Every file named in a confirmation, for prompt text and job labels. */
-export function fileNames(confirmation: ConfirmationRequest): string[] {
-  return confirmation.files.map((file) => file.name);
 }
 
 function asString(value: unknown): string | undefined {
