@@ -7,21 +7,21 @@ param location string = resourceGroup().location
 @description('Tags applied to the account.')
 param tags object = {}
 
-@description('Chat/reasoning model deployment.')
+@description('Chat/reasoning model deployment. Standard (regional) SKU: fresh/personal subscriptions commonly start with 0 approved quota on GlobalStandard until a quota increase is requested, but already have default Standard quota (50K TPM as of writing).')
 param chatModel object = {
   deploymentName: 'gpt-4o'
   modelName: 'gpt-4o'
   modelVersion: '2024-11-20'
-  skuName: 'GlobalStandard'
+  skuName: 'Standard'
   capacity: 10
 }
 
-@description('Embedding model deployment used for indexing and query-time vectorization.')
+@description('Embedding model deployment used for indexing and query-time vectorization. text-embedding-3-small only supports GlobalStandard/DataZoneStandard (not plain Standard) as a deployment SKU; GlobalStandard has ample default quota (1000K TPM as of writing) even on fresh subscriptions.')
 param embeddingModel object = {
   deploymentName: 'text-embedding-3-small'
   modelName: 'text-embedding-3-small'
   modelVersion: '1'
-  skuName: 'Standard'
+  skuName: 'GlobalStandard'
   capacity: 30
 }
 

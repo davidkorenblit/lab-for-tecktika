@@ -14,6 +14,9 @@ param location string = resourceGroup().location
 @description('Azure region for the Azure OpenAI account, if capacity requires a different region than the rest of the stack.')
 param openAiLocation string = location
 
+@description('Azure region for the Static Web App. Static Web Apps only deploys to a short fixed list of regions, which often excludes the region used for everything else.')
+param staticWebAppLocation string = 'eastus2'
+
 @description('Tags applied to every resource.')
 param tags object = {
   project: projectName
@@ -92,6 +95,7 @@ module compute 'modules/compute.bicep' = {
   params: {
     baseName: baseName
     location: location
+    staticWebAppLocation: staticWebAppLocation
     tags: tags
     logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString

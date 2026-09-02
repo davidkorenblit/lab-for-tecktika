@@ -4,6 +4,9 @@ param baseName string
 @description('Azure region for compute resources.')
 param location string = resourceGroup().location
 
+@description('Azure region for the Static Web App. Static Web Apps only deploys to a short fixed list of regions (centralus, eastus2, westus2, westeurope, eastasia as of writing), which often does not include the region used for everything else.')
+param staticWebAppLocation string = 'eastus2'
+
 @description('Tags applied to all resources in this module.')
 param tags object = {}
 
@@ -49,6 +52,11 @@ param entraApiClientId string = ''
 
 // --- Backend: Azure Container Apps -----------------------------------------
 
+// Container Apps caps names at 32 chars total; 'ca-backend-' alone is 11, so
+// baseName must be truncated here specifically (other resource types in this
+// file have far higher limits and use baseName untruncated).
+var containerAppNameSuffix = substring(baseName, 0, min(21, length(baseName)))
+
 resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: 'cae-${baseName}'
   location: location
@@ -65,7 +73,7 @@ resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2024-03-01'
 }
 
 resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'ca-backend-${baseName}'
+  name: 'ca-backend-${containerAppNameSuffix}'
   location: location
   tags: tags
   identity: {
@@ -169,7 +177,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
 
 resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
   name: 'swa-frontend-${baseName}'
-  location: location
+  location: staticWebAppLocation
   tags: tags
   sku: {
     name: 'Free'
