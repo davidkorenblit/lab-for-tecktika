@@ -4,5 +4,7 @@ pydantic-settings
 azure-identity
 azure-data-tables
 azure-storage-queue
+azure-storage-blob
 pytest
 httpx2
+python-multipart

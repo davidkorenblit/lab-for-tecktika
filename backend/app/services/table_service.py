@@ -31,7 +31,7 @@ def get_job(job_id: str):
 
     try:
         return table_client.get_entity(
-            partition_key="JOB",
+            partition_key="ingestion-jobs",
             row_key=job_id,
         )
     except ResourceNotFoundError:

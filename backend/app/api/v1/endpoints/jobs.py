@@ -1,7 +1,5 @@
 from fastapi import APIRouter, HTTPException
 
-from app.schemas.jobs import CreateJobRequest
-from app.services.job_manager import create_job_and_enqueue
 from app.services.table_service import get_job
 
 
@@ -15,20 +13,6 @@ def jobs_health():
         "service": "jobs",
     }
 
-
-@router.post("")
-def create_job(request: CreateJobRequest):
-    job = create_job_and_enqueue(
-        operation=request.operation,
-        file_name=request.file_name,
-        blob_name=request.blob_name,
-        requested_by=request.requested_by,
-    )
-
-    return job.model_dump(
-        by_alias=True,
-        mode="json",
-    )
 
 
 @router.get("/{job_id}")
