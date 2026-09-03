@@ -35,6 +35,8 @@ def test_create_job_endpoint():
     assert response.json()["status"] == "QUEUED"
 
     manager.assert_called_once()
+
+
 def test_get_job_endpoint():
     with patch(
         "app.api.v1.endpoints.jobs.get_job"
@@ -53,4 +55,22 @@ def test_get_job_endpoint():
     assert response.json()["RowKey"] == "123"
     assert response.json()["status"] == "RUNNING"
 
-    mock_get_job.assert_called_once_with("123")    
+    mock_get_job.assert_called_once_with("123")
+
+
+def test_get_job_not_found():
+    with patch(
+        "app.api.v1.endpoints.jobs.get_job"
+    ) as mock_get_job:
+        mock_get_job.return_value = None
+
+        response = client.get(
+            "/api/v1/jobs/999"
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": "Job not found"
+    }
+
+    mock_get_job.assert_called_once_with("999")
