@@ -3,3 +3,4 @@ uvicorn[standard]
 pydantic-settings
 azure-identity
 azure-data-tables
+azure-storage-queue
