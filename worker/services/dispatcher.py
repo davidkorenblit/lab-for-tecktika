@@ -23,8 +23,8 @@ class EventDispatcher:
         # 1. Update status to RUNNING in Table Storage
         self.job_service.mark_running(event.document_id, event.blob_name)
 
-        # 2. Handle Indexing (CREATE / UPDATE / INDEX) with Idempotency check
-        if event.event_type in (EventType.CREATE, EventType.UPDATE, EventType.INDEX):
+        # 2. Handle Indexing (CREATE / UPDATE) with Idempotency check
+        if event.event_type in (EventType.CREATE, EventType.UPDATE):
             if not self.blob_service.is_file_changed(event.blob_name, event.etag):
                 self.job_service.mark_succeeded(event.document_id, event.blob_name)
                 return

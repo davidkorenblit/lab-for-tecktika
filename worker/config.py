@@ -5,7 +5,8 @@ class Settings:
     """
     Centralized configuration settings read from App Settings / Environment variables.
     """
-    # Azure Storage resources
+    # Azure Storage Account & Resources
+    STORAGE_ACCOUNT_NAME: str = os.getenv("STORAGE_ACCOUNT_NAME", "stragpocdevqelri355piqlq")
     JOBS_QUEUE_NAME: str = os.getenv("JOBS_QUEUE_NAME", "index-jobs")
     POISON_QUEUE_NAME: str = os.getenv("POISON_QUEUE_NAME", "index-jobs-poison")
     JOBS_TABLE_NAME: str = os.getenv("JOBS_TABLE_NAME", "jobstatus")
