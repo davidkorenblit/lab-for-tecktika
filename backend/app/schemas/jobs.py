@@ -30,3 +30,28 @@ class QueueMessage(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc),
         alias="createdAt",
     )
+
+class JobEntity(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    partition_key: str = Field(default="JOB", alias="PartitionKey")
+    row_key: UUID = Field(alias="RowKey")
+
+    operation: JobOperation
+    file_name: str = Field(alias="fileName")
+    status: JobStatus = JobStatus.QUEUED
+    requested_by: str = Field(alias="requestedBy")
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        alias="createdAt",
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        alias="updatedAt",
+    )
+
+    error_message: str | None = Field(
+        default=None,
+        alias="errorMessage",
+    )    
