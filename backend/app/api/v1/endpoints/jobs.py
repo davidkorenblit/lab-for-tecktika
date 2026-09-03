@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.schemas.jobs import CreateJobRequest
 from app.services.job_manager import create_job_and_enqueue
+from app.services.table_service import get_job
 
 
 router = APIRouter()
@@ -28,3 +29,8 @@ def create_job(request: CreateJobRequest):
         by_alias=True,
         mode="json",
     )
+
+
+@router.get("/{job_id}")
+def read_job(job_id: str):
+    return get_job(job_id)

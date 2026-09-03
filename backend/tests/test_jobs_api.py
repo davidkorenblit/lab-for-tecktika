@@ -35,3 +35,22 @@ def test_create_job_endpoint():
     assert response.json()["status"] == "QUEUED"
 
     manager.assert_called_once()
+def test_get_job_endpoint():
+    with patch(
+        "app.api.v1.endpoints.jobs.get_job"
+    ) as mock_get_job:
+        mock_get_job.return_value = {
+            "PartitionKey": "JOB",
+            "RowKey": "123",
+            "status": "RUNNING",
+        }
+
+        response = client.get(
+            "/api/v1/jobs/123"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["RowKey"] == "123"
+    assert response.json()["status"] == "RUNNING"
+
+    mock_get_job.assert_called_once_with("123")    

@@ -22,3 +22,11 @@ def create_job(job: JobEntity) -> None:
     table_client.create_entity(
         entity=entity,
     )
+
+def get_job(job_id: str):
+    table_client = get_job_table_client()
+
+    return table_client.get_entity(
+        partition_key="JOB",
+        row_key=job_id,
+    )
