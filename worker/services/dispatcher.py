@@ -36,14 +36,20 @@ class EventDispatcher:
 
     def _handle_index(self, event: QueueMessage) -> None:
         """
-        Triggers Azure AI Search indexer and marks job status as SUCCEEDED upon completion.
+        Triggers Azure AI Search indexer. If updating, purges old chunks first to ensure zero ghost chunks.
         """
+        if event.event_type == EventType.UPDATE:
+            logging.info(f"UPDATE event detected: purging old chunks for Doc ID: {event.document_id}")
+            self.search_service.delete_document_chunks(event.document_id)
+
         self.search_service.trigger_indexer()
         self.job_service.mark_succeeded(event.document_id, event.blob_name)
         logging.info(f"Indexing completed successfully for Doc ID: {event.document_id}")
 
     def _handle_delete(self, event: QueueMessage) -> None:
         """
-        Triggers Azure AI Search surgical deletion (will be connected in PR 7).
+        Executes surgical deletion of all chunks for Document ID and updates status to SUCCEEDED.
         """
-        logging.info(f"Deletion handler triggered for Doc ID: {event.document_id}")
+        self.search_service.delete_document_chunks(event.document_id)
+        self.job_service.mark_succeeded(event.document_id, event.blob_name)
+        logging.info(f"Surgical deletion completed successfully for Doc ID: {event.document_id}")
