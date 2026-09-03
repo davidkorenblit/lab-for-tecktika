@@ -31,6 +31,13 @@ class QueueMessage(BaseModel):
         alias="createdAt",
     )
 
+class CreateJobRequest(BaseModel):
+    operation: JobOperation
+    file_name: str = Field(alias="fileName")
+    blob_name: str = Field(alias="blobName")
+    requested_by: str = Field(alias="requestedBy")
+
+
 class JobEntity(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
