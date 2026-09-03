@@ -4,3 +4,5 @@ pydantic-settings
 azure-identity
 azure-data-tables
 azure-storage-queue
+pytest
+httpx2
