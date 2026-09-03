@@ -18,15 +18,15 @@ class EventDispatcher:
         """
         Main entrypoint to process and route incoming queue events.
         """
-        logging.info(f"Dispatching [{event.event_type}] event for Document ID: {event.document_id}")
+        logging.info(f"Dispatching [{event.event_type}] event for Job ID: {event.job_id}, Doc ID: {event.document_id}")
 
         # 1. Update status to RUNNING in Table Storage
-        self.job_service.mark_running(event.document_id, event.blob_name)
+        self.job_service.mark_running(event.job_id, event.document_id, event.blob_name)
 
         # 2. Handle Indexing (CREATE / UPDATE) with Idempotency check
         if event.event_type in (EventType.CREATE, EventType.UPDATE):
             if not self.blob_service.is_file_changed(event.blob_name, event.etag):
-                self.job_service.mark_succeeded(event.document_id, event.blob_name)
+                self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
                 return
             self._handle_index(event)
 
@@ -43,13 +43,13 @@ class EventDispatcher:
             self.search_service.delete_document_chunks(event.document_id)
 
         self.search_service.trigger_indexer()
-        self.job_service.mark_succeeded(event.document_id, event.blob_name)
-        logging.info(f"Indexing completed successfully for Doc ID: {event.document_id}")
+        self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
+        logging.info(f"Indexing completed successfully for Job ID: {event.job_id}, Doc ID: {event.document_id}")
 
     def _handle_delete(self, event: QueueMessage) -> None:
         """
         Executes surgical deletion of all chunks for Document ID and updates status to SUCCEEDED.
         """
         self.search_service.delete_document_chunks(event.document_id)
-        self.job_service.mark_succeeded(event.document_id, event.blob_name)
-        logging.info(f"Surgical deletion completed successfully for Doc ID: {event.document_id}")
+        self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
+        logging.info(f"Surgical deletion completed successfully for Job ID: {event.job_id}, Doc ID: {event.document_id}")

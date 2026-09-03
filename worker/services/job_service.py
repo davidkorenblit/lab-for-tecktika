@@ -26,30 +26,31 @@ class JobService:
             )
         return self._client
 
-    def mark_status(self, document_id: str, blob_name: str, status: JobStatus, error_msg: Optional[str] = None) -> None:
+    def mark_status(self, job_id: str, document_id: str, blob_name: str, status: JobStatus, error_msg: Optional[str] = None) -> None:
         """
         Base method to update job status in Table Storage.
         """
         try:
             client = self._get_client()
             job = JobEntity(
-                RowKey=document_id,
+                RowKey=job_id,
+                document_id=document_id,
                 blob_name=blob_name,
                 status=status,
                 error_message=error_msg
             )
             client.upsert_entity(entity=job.model_dump(exclude_none=True))
-            logging.info(f"Table Storage updated: [{status}] for Doc ID: {document_id}")
+            logging.info(f"Table Storage updated: [{status}] for Job ID: {job_id} (Doc ID: {document_id})")
         except Exception as err:
-            logging.error(f"Failed to update Table Storage for Doc ID {document_id}: {err}")
+            logging.error(f"Failed to update Table Storage for Job ID {job_id}: {err}")
 
     # --- Explicit Helper Methods ---
 
-    def mark_running(self, document_id: str, blob_name: str) -> None:
-        self.mark_status(document_id, blob_name, JobStatus.RUNNING)
+    def mark_running(self, job_id: str, document_id: str, blob_name: str) -> None:
+        self.mark_status(job_id, document_id, blob_name, JobStatus.RUNNING)
 
-    def mark_succeeded(self, document_id: str, blob_name: str) -> None:
-        self.mark_status(document_id, blob_name, JobStatus.SUCCEEDED)
+    def mark_succeeded(self, job_id: str, document_id: str, blob_name: str) -> None:
+        self.mark_status(job_id, document_id, blob_name, JobStatus.SUCCEEDED)
 
-    def mark_failed(self, document_id: str, blob_name: str, error_msg: str) -> None:
-        self.mark_status(document_id, blob_name, JobStatus.FAILED, error_msg=error_msg)
+    def mark_failed(self, job_id: str, document_id: str, blob_name: str, error_msg: str) -> None:
+        self.mark_status(job_id, document_id, blob_name, JobStatus.FAILED, error_msg=error_msg)

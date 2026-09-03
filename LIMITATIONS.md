@@ -17,5 +17,5 @@
 
 ## 3. Next Steps & Production Enhancements
 1. **Dynamic ACL Security Filters**: Inject user security group claims into OData filter queries in Azure AI Search.
-2. **Azure AI Document Intelligence Integration**: Enable advanced layout models for complex multi-column PDFs and tables.
+2. **Azure AI Document Intelligence Integration**: For the current scope, standard text parsing is utilized given the clean, text-native synthetic dataset. In production environments with uncontrolled input formats (e.g., scanned PDFs, complex tables, multi-column layouts), `Microsoft.Skills.Vision.DocumentIntelligenceSkill` should be integrated into the Azure AI Search Skillset.
 3. **Multi-Region Active-Passive Failover**: Geo-redundant storage and secondary AI Search replicas for business continuity.

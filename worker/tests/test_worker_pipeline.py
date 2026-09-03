@@ -13,12 +13,14 @@ from function_app import parse_queue_message, process_queue_message
 def test_parse_queue_message_json():
     """Verifies plain JSON queue messages are parsed correctly."""
     raw_json = json.dumps({
+        "job_id": "job-100",
         "event_type": "CREATE",
         "blob_name": "sample.pdf",
         "document_id": "doc-123",
         "etag": "0x8D8"
     })
     msg = parse_queue_message(raw_json)
+    assert msg.job_id == "job-100"
     assert msg.event_type == EventType.CREATE
     assert msg.blob_name == "sample.pdf"
     assert msg.document_id == "doc-123"
@@ -28,6 +30,7 @@ def test_parse_queue_message_json():
 def test_parse_queue_message_base64():
     """Verifies Base64 encoded queue messages are parsed correctly."""
     raw_json = json.dumps({
+        "job_id": "job-101",
         "event_type": "DELETE",
         "blob_name": "sample.pdf",
         "document_id": "doc-123"
@@ -35,6 +38,7 @@ def test_parse_queue_message_base64():
     b64_encoded = base64.b64encode(raw_json.encode("utf-8")).decode("utf-8")
     
     msg = parse_queue_message(b64_encoded)
+    assert msg.job_id == "job-101"
     assert msg.event_type == EventType.DELETE
     assert msg.blob_name == "sample.pdf"
     assert msg.document_id == "doc-123"
@@ -51,15 +55,16 @@ def test_dispatcher_create_flow(MockJobService, MockBlobService, MockSearchServi
     dispatcher.blob_service.is_file_changed.return_value = True
 
     event = QueueMessage(
+        job_id="job-1",
         event_type=EventType.CREATE,
         blob_name="file.pdf",
         document_id="doc-1"
     )
     dispatcher.dispatch(event)
 
-    dispatcher.job_service.mark_running.assert_called_once_with("doc-1", "file.pdf")
+    dispatcher.job_service.mark_running.assert_called_once_with("job-1", "doc-1", "file.pdf")
     dispatcher.search_service.trigger_indexer.assert_called_once()
-    dispatcher.job_service.mark_succeeded.assert_called_once_with("doc-1", "file.pdf")
+    dispatcher.job_service.mark_succeeded.assert_called_once_with("job-1", "doc-1", "file.pdf")
 
 
 @patch("services.dispatcher.SearchService")
@@ -71,6 +76,7 @@ def test_dispatcher_idempotency_skip(MockJobService, MockBlobService, MockSearch
     dispatcher.blob_service.is_file_changed.return_value = False
 
     event = QueueMessage(
+        job_id="job-2",
         event_type=EventType.CREATE,
         blob_name="file.pdf",
         document_id="doc-1",
@@ -78,9 +84,9 @@ def test_dispatcher_idempotency_skip(MockJobService, MockBlobService, MockSearch
     )
     dispatcher.dispatch(event)
 
-    dispatcher.job_service.mark_running.assert_called_once_with("doc-1", "file.pdf")
+    dispatcher.job_service.mark_running.assert_called_once_with("job-2", "doc-1", "file.pdf")
     dispatcher.search_service.trigger_indexer.assert_not_called()
-    dispatcher.job_service.mark_succeeded.assert_called_once_with("doc-1", "file.pdf")
+    dispatcher.job_service.mark_succeeded.assert_called_once_with("job-2", "doc-1", "file.pdf")
 
 
 @patch("services.dispatcher.SearchService")
@@ -91,15 +97,16 @@ def test_dispatcher_delete_flow(MockJobService, MockBlobService, MockSearchServi
     dispatcher = EventDispatcher()
 
     event = QueueMessage(
+        job_id="job-3",
         event_type=EventType.DELETE,
         blob_name="file.pdf",
         document_id="doc-1"
     )
     dispatcher.dispatch(event)
 
-    dispatcher.job_service.mark_running.assert_called_once_with("doc-1", "file.pdf")
+    dispatcher.job_service.mark_running.assert_called_once_with("job-3", "doc-1", "file.pdf")
     dispatcher.search_service.delete_document_chunks.assert_called_once_with("doc-1")
-    dispatcher.job_service.mark_succeeded.assert_called_once_with("doc-1", "file.pdf")
+    dispatcher.job_service.mark_succeeded.assert_called_once_with("job-3", "doc-1", "file.pdf")
 
 
 # --- 3. Tests for Error Handling & Table FAILED Status ---
@@ -113,6 +120,7 @@ def test_process_queue_message_failure_updates_table(mock_job_service, mock_disp
     mock_msg = MagicMock()
     mock_msg.id = "msg-999"
     mock_msg.get_body.return_value = json.dumps({
+        "job_id": "job-bad",
         "event_type": "CREATE",
         "blob_name": "bad_file.pdf",
         "document_id": "doc-bad"
@@ -123,6 +131,7 @@ def test_process_queue_message_failure_updates_table(mock_job_service, mock_disp
 
     assert "Search Service Timeout" in str(exc_info.value)
     mock_job_service.mark_failed.assert_called_once_with(
+        job_id="job-bad",
         document_id="doc-bad",
         blob_name="bad_file.pdf",
         error_msg="Search Service Timeout"

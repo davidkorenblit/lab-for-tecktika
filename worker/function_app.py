@@ -51,6 +51,7 @@ def process_queue_message(msg: func.QueueMessage) -> None:
         # If parsing succeeded but execution failed, mark job as FAILED in Table Storage
         if parsed_event:
             job_service.mark_failed(
+                job_id=parsed_event.job_id,
                 document_id=parsed_event.document_id,
                 blob_name=parsed_event.blob_name,
                 error_msg=str(err)

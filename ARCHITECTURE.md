@@ -77,3 +77,26 @@ flowchart TD
 2. **Trigger path down for 2 hours**: On-demand / scheduled delta catch-up runs reconcile the library state against the search index.
 3. **400-page PDF deleted**: Azure AI Search documents tagged with `ParentDocumentID` are purged in bulk using an OData filter.
 4. **Prompt injection in PDF**: Strict tool schema validation and separation between retrieval context and agent instruction blocks.
+
+---
+
+## 5. Azure AI Search Pipeline Strategy (Simplified Breakdown)
+
+כל מה שמתבצע בחיפוש (Azure AI Search) מסתכם ב-4 צעדים טכניים ברורים:
+
+* **צעד 1: חיתוך (Chunking)**
+  * **מה בוצע:** המערכת חותכת את ה-PDF למקטעים של **400–600 טוקנים** עם חפיפה של **50–100 טוקנים** (~10%–15%) (`SplitSkill`).
+  * **למה?** מדידה בטוקנים מדויקת הנדסית (במיוחד בעברית) ומונעת קטיעה סמנטית של משפטים בין סעיפים ותנאים כבולים.
+
+* **צעד 2: הפיכה למספרים (Embedding)**
+  * **מה בוצע:** שולחים כל מקטע למודל `text-embedding-3-small` ב-Azure OpenAI ומקבלים וקטור של 1,536 ממדים (`AzureOpenAIEmbeddingSkill`).
+  * **למה?** כי הוא זול, תומך בעברית, ומספק יחס עלות-תועלת אופטימלי בדרישות התקציב.
+
+* **צעד 3: זיהוי ומחיקה מלאה (Document Identity & Metadata)**
+  * **מה בוצע:** לכל מקטע מצמידים מזהה אב יציב (`ParentDocumentID`) הילוט מול קובץ ה-Source ב-**Azure Blob Storage**.
+  * **למה?** כשהקובץ נמחק או מוחלף ב-Blob Storage, ה-Worker מאתר את כל ה-Chunks המשויכים לאותו `ParentDocumentID` ומוחק אותם מהאינדקס באופן מלא ואידמפוטנטי בלי שאריות.
+
+* **צעד 4: חיפוש משולב (Hybrid Search & Reranking)**
+  * **מה בוצע:** מחפשים גם לפי מילים מדויקות (BM25) וגם לפי משמעות סמנטית (וקטור), ומריצים Semantic Reranker.
+  * **למה?** כי אם מחפשים מק"ט כמו `R-2048`, חיפוש לפי משמעות עלול להתבלבל עם `R-2049`, אבל חיפוש מילים יפגע בול.
+
