@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worker Ingestion Pipeline — סיכום פרויקט מנהלים</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0a0d14;
+            --card-bg: rgba(22, 27, 38, 0.75);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --accent-emerald: #10b981;
+            --accent-emerald-glow: rgba(16, 185, 129, 0.25);
+            --accent-cyan: #06b6d4;
+            --accent-purple: #8b5cf6;
+            --accent-gold: #f59e0b;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --code-bg: #1e2433;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Heebo', sans-serif;
+            background-color: var(--bg-dark);
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 85% 85%, rgba(6, 182, 212, 0.08) 0%, transparent 40%);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* Top Header Banner */
+        .header-card {
+            background: linear-gradient(135deg, rgba(22, 27, 38, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%);
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(12px);
+            border-radius: 20px;
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent-emerald), var(--accent-cyan), var(--accent-purple));
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .badge-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--accent-emerald-glow);
+            border: 1px solid var(--accent-emerald);
+            color: var(--accent-emerald);
+            padding: 0.4rem 1rem;
+            border-radius: 9999px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            box-shadow: 0 0 15px var(--accent-emerald-glow);
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-emerald);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--accent-emerald);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.3); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        h1 {
+            font-size: 2.4rem;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 0%, #9ca3af 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            font-weight: 400;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(8px);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(16, 185, 129, 0.4);
+        }
+
+        .stat-number {
+            font-size: 2.2rem;
+            font-weight: 900;
+            color: var(--text-main);
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        /* Section Cards */
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-main);
+        }
+
+        .section-number {
+            color: var(--accent-emerald);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.2rem;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        @media (max-width: 600px) {
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.75rem;
+            backdrop-filter: blur(10px);
+        }
+
+        /* PR List styling */
+        .pr-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+        }
+
+        .pr-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(30, 36, 51, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 0.85rem 1.1rem;
+            border-radius: 12px;
+            transition: background 0.2s ease;
+        }
+
+        .pr-item:hover {
+            background: rgba(30, 36, 51, 0.95);
+        }
+
+        .pr-info {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+        }
+
+        .pr-badge {
+            background: rgba(6, 182, 212, 0.15);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 0.2rem 0.6rem;
+            border-radius: 6px;
+        }
+
+        .pr-name {
+            font-weight: 600;
+            font-size: 0.98rem;
+        }
+
+        .pr-status {
+            color: var(--accent-emerald);
+            font-weight: 700;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        /* Table styling */
+        .custom-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.92rem;
+            text-align: right;
+        }
+
+        .custom-table th {
+            background: rgba(30, 36, 51, 0.8);
+            color: var(--text-muted);
+            padding: 0.85rem 1rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .custom-table td {
+            padding: 0.85rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.88rem;
+        }
+
+        .custom-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .endpoint-link {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            word-break: break-all;
+        }
+
+        /* Architecture Diagram Box */
+        .arch-box {
+            background: #0f141d;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 1.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.88rem;
+            color: #d1d5db;
+            line-height: 1.8;
+            overflow-x: auto;
+            direction: ltr;
+        }
+
+        .highlight-green { color: var(--accent-emerald); font-weight: 600; }
+        .highlight-cyan { color: var(--accent-cyan); font-weight: 600; }
+        .highlight-gold { color: var(--accent-gold); font-weight: 600; }
+
+        /* Test Pill */
+        .test-pill {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            background: rgba(16, 185, 129, 0.06);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 10px;
+            margin-bottom: 0.6rem;
+        }
+
+        .test-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: #e5e7eb;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- Header Card -->
+    <div class="header-card">
+        <div class="header-top">
+            <div class="badge-status">
+                <span class="pulse-dot"></span>
+                100% מוכן לפריסה בענן (Branch: feature/worker-pipeline)
+            </div>
+            <div style="color: var(--text-muted); font-size: 0.9rem; font-family: 'JetBrains Mono', monospace;">
+                2026-09-03 | Antigravity AI Engineer
+            </div>
+        </div>
+        <h1>Worker Ingestion Pipeline — סיכום פרויקט מנהלים</h1>
+        <p class="subtitle">צינור עיבוד נתונים באינדוקס אוטומטי, מחיקה כירורגית וניהול אידמפוטנטי מבוסס Azure Functions (Python v2)</p>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number" style="color: var(--accent-emerald);">8 / 8</div>
+            <div class="stat-label">PR-ים הושלמו וקומטו</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" style="color: var(--accent-cyan);">6 / 6</div>
+            <div class="stat-label">Unit Tests עברו (100%)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" style="color: var(--accent-purple);">1.75s</div>
+            <div class="stat-label">זמן הרצת טסטים מקומי</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" style="color: var(--accent-gold);">0 Keys</div>
+            <div class="stat-label">Managed Identity בלבד</div>
+        </div>
+    </div>
+
+    <!-- Main Content 2 Columns -->
+    <div class="grid-2">
+
+        <!-- Column 1: PRs Completed -->
+        <div class="card">
+            <div class="section-title">
+                <span class="section-number">01 —</span>
+                מה נגמר ב-Worker (8 ה-PR-ים)
+            </div>
+
+            <div class="pr-list">
+                <div class="pr-item">
+                    <div class="pr-info">
+                        <span class="pr-badge">PR 1</span>
+                        <span class="pr-name">Models & Config Schema</span>
+                    </div>
+                    <span class="pr-status">✓ הושלם</span>
+                </div>
+                <div class="pr-item">
+                    <div class="pr-info">
+                        <span class="pr-badge">PR 2</span>
+                        <span class="pr-name">Queue Listener (Base64/JSON)</span>
+                    </div>
+                    <span class="pr-status">✓ הושלם</span>
+                </div>
+                <div class="pr-item">
+                    <div class="pr-info">
+                        <span class="pr-badge">PR 3</span>
+                        <span class="pr-name">Job Status Engine (Table Storage)</span>
+                    </div>
+                    <span class="pr-status">✓ הושלם</span>
+                </div>
+                <div class="pr-item">
+                    <div class="pr-info">
+                        <span class="pr-badge">PR 4</span>
+                        <span class="pr-name">ETag Idempotency Verification</span>
+                    </div>
+                    <span class="pr-status">✓ הושלם</span>
+                </div>
+                <div class="pr-item">
+                    <div class="pr-info">
+                        <span class="pr-badge">PR 5</span>
+                        <span class="pr-name">Event Dispatcher Router</span>
+                    </div>
+                    <span class="pr-status">✓ הושלם</span>
+                </div>
+                <div class="pr-item">
+                    <div class="pr-info">
+                        <span class="pr-badge">PR 6</span>
+                        <span class="pr-name">Azure AI Search Indexer Trigger</span>
+                    </div>
+                    <span class="pr-status">✓ הושלם</span>
+                </div>
+                <div class="pr-item">
+                    <div class="pr-info">
+                        <span class="pr-badge">PR 7</span>
+                        <span class="pr-name">Surgical Chunk Purge (Delete)</span>
+                    </div>
+                    <span class="pr-status">✓ הושלם</span>
+                </div>
+                <div class="pr-item">
+                    <div class="pr-info">
+                        <span class="pr-badge">PR 8</span>
+                        <span class="pr-name">Error Handling & Poison Queue</span>
+                    </div>
+                    <span class="pr-status">✓ הושלם</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 2: Infrastructure Endpoints -->
+        <div class="card">
+            <div class="section-title">
+                <span class="section-number">02 —</span>
+                קונפיגורציה ו-Endpoints בענן
+            </div>
+
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th>משאב Azure</th>
+                        <th>שם / Endpoint</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="font-weight: 600; color: #f3f4f6;">AI Search Endpoint</td>
+                        <td><span class="endpoint-link">https://srch-ragpoc-dev-qelri355piqlq.search.windows.net</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #f3f4f6;">Azure OpenAI Endpoint</td>
+                        <td><span class="endpoint-link">https://aoai-ragpoc-dev-qelri355piqlq.openai.azure.com/</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #f3f4f6;">Storage Account</td>
+                        <td><span style="color: var(--accent-gold);">stragpocdevqelri355piqlq</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #f3f4f6;">Incoming Queue</td>
+                        <td><span style="color: var(--accent-cyan);">index-jobs</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #f3f4f6;">Poison Queue (DLQ)</td>
+                        <td><span style="color: #ef4444;">index-jobs-poison</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #f3f4f6;">Job Status Table</td>
+                        <td><span style="color: var(--accent-emerald);">jobstatus</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #f3f4f6;">Blob Container</td>
+                        <td><span style="color: var(--text-main);">pdf-library</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #f3f4f6;">Embedding Model</td>
+                        <td><span style="color: var(--accent-purple);">text-embedding-3-small (1536d)</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- Architecture Section -->
+    <div class="card" style="margin-bottom: 2.5rem;">
+        <div class="section-title">
+            <span class="section-number">03 —</span>
+            זרימת הנתונים והאידמפוטנטיות (Data Flow Architecture)
+        </div>
+        <div class="arch-box">
+[Queue Message: CREATE/UPDATE/DELETE]
+       │
+       ▼
+⚡ function_app.py (Parse JSON / Base64)
+       │
+       ▼
+🔀 EventDispatcher.dispatch()
+       ├─► 1. <span class="highlight-cyan">JobService.mark_running()</span> (Table Storage: RUNNING)
+       │
+       ├─► 2. <span class="highlight-gold">BlobService.is_file_changed()</span> (ETag Check)
+       │      ├── [Unchanged] ──► <span class="highlight-green">JobService.mark_succeeded() & SKIP</span> (0 Compute Wasted!)
+       │      └── [Modified]  ──► <span class="highlight-green">SearchService.trigger_indexer()</span>
+       │
+       └─► 3. <span class="highlight-cyan">DELETE / UPDATE Event</span>
+              └──► <span class="highlight-gold">SearchService.delete_document_chunks()</span> (Filter: ParentDocumentID eq 'id')
+       │
+       ▼
+✅ <span class="highlight-green">JobService.mark_succeeded()</span> | ☠️ <span class="highlight-gold">5 Retries ──► Poison Queue</span>
+        </div>
+    </div>
+
+    <!-- Unit Tests Section -->
+    <div class="card">
+        <div class="section-title">
+            <span class="section-number">04 —</span>
+            סוויטת טסטים מקומית (Pytest - 100% Pass Rate)
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.75rem;">
+            <div class="test-pill">
+                <span class="test-name">test_parse_queue_message_json</span>
+                <span style="color: var(--accent-emerald); font-weight: 700;">PASSED</span>
+            </div>
+            <div class="test-pill">
+                <span class="test-name">test_parse_queue_message_base64</span>
+                <span style="color: var(--accent-emerald); font-weight: 700;">PASSED</span>
+            </div>
+            <div class="test-pill">
+                <span class="test-name">test_dispatcher_create_flow</span>
+                <span style="color: var(--accent-emerald); font-weight: 700;">PASSED</span>
+            </div>
+            <div class="test-pill">
+                <span class="test-name">test_dispatcher_idempotency_skip</span>
+                <span style="color: var(--accent-emerald); font-weight: 700;">PASSED</span>
+            </div>
+            <div class="test-pill">
+                <span class="test-name">test_dispatcher_delete_flow</span>
+                <span style="color: var(--accent-emerald); font-weight: 700;">PASSED</span>
+            </div>
+            <div class="test-pill">
+                <span class="test-name">test_process_queue_message_failure</span>
+                <span style="color: var(--accent-emerald); font-weight: 700;">PASSED</span>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
