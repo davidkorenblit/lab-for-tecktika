@@ -7,7 +7,7 @@ from app.services.blob_service import upload_document
 from app.services.job_manager import create_job_and_enqueue
 
 router = APIRouter()
-
+MAX_FILE_SIZE = 50 * 1024 * 1024
 
 @router.post("")
 async def upload_document_endpoint(
@@ -21,6 +21,14 @@ async def upload_document_endpoint(
 
     document_id = str(uuid4())
     file_data = await file.read()
+
+    MAX_FILE_SIZE = 50 * 1024 * 1024
+
+    if len(file_data) > MAX_FILE_SIZE:
+       raise HTTPException(
+        status_code=413,
+        detail="File size exceeds the 50 MB limit",
+    )
 
     etag = upload_document(
         blob_name=file.filename,
