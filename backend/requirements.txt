@@ -1,13 +1,13 @@
-fastapi
-uvicorn[standard]
-pydantic-settings
-azure-identity
-azure-data-tables
-azure-storage-queue
-azure-storage-blob
-pytest
-httpx
-python-multipart
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic-settings==2.15.0
+azure-identity==1.25.3
+azure-data-tables==12.7.0
+azure-storage-queue==12.17.0
+azure-storage-blob==12.30.1
+pytest==9.1.1
+httpx==0.28.1
+python-multipart==0.0.32
 
-openai>=1.30.0
-azure-search-documents>=11.4.0
+openai==3.8.0
+azure-search-documents==12.0.0
