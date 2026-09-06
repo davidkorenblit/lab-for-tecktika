@@ -80,19 +80,19 @@ class SearchService:
 
     def delete_document_chunks(self, document_id: str) -> bool:
         """
-        Executes surgical deletion by locating all chunks where ParentDocumentID eq document_id
+        Executes surgical deletion by locating all chunks where parentDocumentId eq document_id
         and purging them from the search index.
         """
         try:
             client = self._get_search_client()
-            filter_query = f"ParentDocumentID eq '{document_id}'"
+            filter_query = f"parentDocumentId eq '{document_id}'"
             
-            # Step 1: Locate all chunk IDs belonging to this ParentDocumentID
+            # Step 1: Locate all chunk IDs belonging to this parentDocumentId
             results = client.search(search_text="*", filter=filter_query, select=["id"])
             chunks_to_delete = [{"id": doc["id"]} for doc in results]
 
             if not chunks_to_delete:
-                logging.info(f"No chunks found for ParentDocumentID: '{document_id}'")
+                logging.info(f"No chunks found for parentDocumentId: '{document_id}'")
                 return True
 
             # Step 2: Perform bulk surgical deletion
