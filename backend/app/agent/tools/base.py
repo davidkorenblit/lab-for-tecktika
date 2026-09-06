@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
 
+from openai.types.chat import ChatCompletionToolParam
 from pydantic import BaseModel
 
 
@@ -28,7 +29,7 @@ class BaseTool(ABC, Generic[ToolArgs]):
 
 def to_openai_tool(
     tool: BaseTool[BaseModel],
-) -> dict[str, object]:
+) -> ChatCompletionToolParam:
     return {
         "type": "function",
         "function": {
