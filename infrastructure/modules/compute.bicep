@@ -23,6 +23,9 @@ param storageAccountName string
 @description('Blob container name holding the source-of-truth PDFs.')
 param blobContainerName string
 
+@description('Blob container name that receives uploads before the Worker copies them into the primary container.')
+param stagingContainerName string
+
 @description('Queue name the backend enqueues ingestion/deletion jobs to and the worker consumes from.')
 param queueName string
 
@@ -162,6 +165,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'STORAGE_CONNECTION__credential', value: 'managedidentity' }
         { name: 'AZURE_STORAGE_ACCOUNT_NAME', value: storageAccountName }
         { name: 'BLOB_CONTAINER_NAME', value: blobContainerName }
+        { name: 'STAGING_CONTAINER_NAME', value: stagingContainerName }
         { name: 'STORAGE_QUEUE_NAME', value: queueName }
         { name: 'JOB_STATUS_TABLE_NAME', value: jobStatusTableName }
         { name: 'AZURE_SEARCH_ENDPOINT', value: searchEndpoint }

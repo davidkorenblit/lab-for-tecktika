@@ -1,0 +1,18 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "AZURE_STORAGE_ACCOUNT_NAME": "stragpocdevqelri355piqlq",
+    "BLOB_CONTAINER_NAME": "pdf-library",
+    "STORAGE_QUEUE_NAME": "index-jobs",
+    "JOB_STATUS_TABLE_NAME": "jobstatus",
+    "AZURE_SEARCH_ENDPOINT": "https://srch-ragpoc-dev-qelri355piqlq.search.windows.net",
+    "AZURE_OPENAI_ENDPOINT": "https://aoai-ragpoc-dev-qelri355piqlq.openai.azure.com/",
+    "OPENAI_EMBEDDING_DEPLOYMENT": "text-embedding-3-small",
+    "AZURE_SEARCH_INDEX": "pdf-chunks-index",
+    "AZURE_SEARCH_INDEXER": "pdf-chunks-indexer",
+    "AZURE_SEARCH_SKILLSET": "pdf-chunks-skillset",
+    "AZURE_SEARCH_DATASOURCE": "pdf-blob-datasource"
+  }
+}

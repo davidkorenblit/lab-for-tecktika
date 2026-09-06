@@ -1,0 +1,17 @@
+# Azure Functions Core
+azure-functions>=2.0.0
+
+# Azure Identity & Authentication
+azure-identity>=1.15.0
+
+# Azure Storage & Search Services
+azure-data-tables>=12.5.0
+azure-storage-blob>=12.19.0
+azure-search-documents==12.1.0b2
+
+# Data Validation & HTTP
+pydantic>=2.5.0
+requests>=2.31.0
+
+# Testing
+pytest>=8.0.0
