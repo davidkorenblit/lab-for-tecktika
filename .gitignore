@@ -37,3 +37,6 @@ worker/obj/
 Thumbs.db
 .vscode/
 .idea/
+
+# --- Local git worktrees (other branches checked out side-by-side for review) ---
+/wt-*/
