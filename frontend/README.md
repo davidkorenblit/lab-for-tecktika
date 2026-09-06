@@ -18,9 +18,9 @@ The API contract this client is written against is in **[API.md](API.md)** — r
 the SSE frame protocol, the shapes it tolerates, and the open questions for whoever
 owns the server.
 
-In dev, Vite proxies both `/api` and `/.auth` to `VITE_DEV_API_PROXY`. With no
-Easy Auth host available locally, set `VITE_AUTH_DEV_BYPASS=true` to skip the
-sign-in gate.
+In dev, Vite proxies `/api` to `VITE_DEV_API_PROXY`. Sign-in is MSAL.js against
+Entra ID directly (no local auth host needed) — set `VITE_AUTH_DEV_BYPASS=true`
+to skip the sign-in gate entirely.
 
 ## How the requirements are met
 
@@ -31,24 +31,24 @@ to the library until the message is sent and the agent has decided what the file
 is for. Add, replace, update and delete are all the agent acting on a turn, and
 the client never invents an action the agent did not propose.
 
-**Auth (`src/services/auth.ts`, `src/services/apiClient.ts`).** The session is
-read once from `/.auth/me` and cached, with concurrent callers de-duplicated so
-first paint issues a single request. Both response shapes are handled: the
-Static Web Apps `{ clientPrincipal }` envelope and the App Service token-store
-array. `authorizedFetch` is the single choke point every API call goes through —
-it attaches `Authorization: Bearer <token>`, sends the Easy Auth cookie, and on a
-401 or 403 refreshes the session and replays the request once. If the replay is
-also rejected the user is sent to `/.auth/login/aad` rather than shown a status
-code. The exception is a 403 for someone who *is* signed in: that is a
-permissions problem, and redirecting to a provider that will happily sign them in
-again would loop, so it surfaces as an error.
-
-> **Caveat worth reading before the code.** SWA's `/.auth/me` does not expose a
-> raw token by default, so `token` is null and requests authenticate with the
-> Easy Auth cookie alone — the `Authorization` header is only attached when a
-> token actually exists. To get a real bearer token, have the SWA config request
-> `id_token`/`access_token` as a claim, or mint an app token in the API. No
-> client change is needed either way.
+**Auth (`src/services/auth.ts`, `src/services/apiClient.ts`).** Sign-in is
+MSAL.js (`@azure/msal-browser`, public client, PKCE, no secret) against the
+Entra ID app registration in `infrastructure/main.bicepparam`
+(`entraTenantId`/`entraApiClientId`) — redirect flow, session cached in
+`sessionStorage`. The session loads once on boot (a silent token acquisition
+against the signed-in account), with concurrent callers de-duplicated.
+`authorizedFetch` is the single choke point every API call goes through — it
+attaches `Authorization: Bearer <token>`, and on a 401 or 403 retries a fresh
+silent token acquisition and replays the request once. If that also fails (or
+needs interaction) the user is sent into the MSAL sign-in redirect rather than
+shown a status code. The exception is a 403 for someone who *is* signed in:
+that is a permissions problem, and redirecting to a provider that will happily
+sign them in again would loop, so it surfaces as an error.
+>
+> The backend must validate the bearer token itself — issuer
+> `https://login.microsoftonline.com/<tenant>/v2.0`, audience either the raw
+> client ID or `api://<client-id>` (see `frontend/API.md` §2). There is no Easy
+> Auth host doing this for you.
 
 **Streaming chat (`src/lib/sse.ts`, `src/services/chat.ts`, `src/hooks/useChat.ts`).**
 `EventSource` cannot POST or set headers, so the stream is read from a `fetch`

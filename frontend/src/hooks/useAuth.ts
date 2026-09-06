@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryClient';
-import { isAuthenticated, loadSession, loginUrl, logoutUrl } from '@/services/auth';
+import { isAuthenticated, loadSession, login, logout } from '@/services/auth';
 import type { AuthSession } from '@/types';
 
 /**
- * Loads the Easy Auth session once on boot and keeps it fresh. Every API call
- * reads the token through the service layer, so this hook exists for the UI
- * (who is signed in, sign-in / sign-out links) rather than for request wiring.
+ * Loads the MSAL session once on boot and keeps it fresh. Every API call reads
+ * the token through the service layer, so this hook exists for the UI (who is
+ * signed in, sign-in / sign-out actions) rather than for request wiring.
  */
 export function useAuth() {
   const query = useQuery<AuthSession>({
@@ -23,7 +23,7 @@ export function useAuth() {
     isLoading: query.isPending,
     error: query.error as Error | null,
     refetch: query.refetch,
-    loginUrl,
-    logoutUrl,
+    login,
+    logout,
   };
 }

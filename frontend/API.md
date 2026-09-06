@@ -1,6 +1,6 @@
 # Frontend ↔ Backend contract
 
-**Client owner:** Shmuel · **Server owner:** _(you)_
+**Client owner:** David (took over from Shmuel, 2026-09-06) · **Server owner:** _(you)_
 
 This describes what the browser client **does today**. It is derived from the code
 in `src/services/`, not from a design document — every route, event name and field
@@ -39,34 +39,45 @@ Source: [apiClient.ts](src/services/apiClient.ts)
 
 ## 2. Authentication
 
+> **Changed 2026-09-06** (new client owner): this section previously described Easy
+> Auth (`/.auth/me`, SWA `clientPrincipal`), marked `AGREED`. That was never actually
+> implemented server-side (`security.py` is still empty) and conflicted with the
+> project's original architecture decision (MSAL.js, not Easy Auth) — the Entra ID
+> app registration was already provisioned for it (SPA platform, PKCE, an exposed
+> `access_as_user` scope) before this doc was written. The client now follows that,
+> not the Easy Auth description below. Re-opening as `OPEN` until the backend side
+> exists.
+
 Source: [auth.ts](src/services/auth.ts), [apiClient.ts:54](src/services/apiClient.ts#L54)
 
 **What the client does**
 
-1. Reads the session once from `/.auth/me` and caches it, de-duplicating concurrent
-   callers so first paint issues a single request. Both envelopes are accepted:
-   the Static Web Apps `{ "clientPrincipal": {...} }` and the App Service token-store
-   array `[{ "access_token", "id_token", "user_claims", ... }]`. `AGREED`
-2. Sends `Authorization: Bearer <token>` on every `/api` call — **only when a token
-   exists** — plus the Easy Auth cookie. `AGREED`
-3. On `401` or `403`: calls `/.auth/refresh`, reloads the session, and replays the
-   request once. If the replay is also rejected the user is sent to
-   `/.auth/login/aad`. The one exception is a `403` for a user who *is* signed in —
-   that is treated as a permissions problem and surfaced as an error, because
-   redirecting to a provider that will sign them in again loops forever. `AGREED`
+1. Signs in with **MSAL.js** (`@azure/msal-browser`, public client, PKCE, no secret)
+   against the app registration `AZURE_CLIENT_ID_API` / `entraApiClientId`
+   (`infrastructure/main.bicepparam`). Redirect flow, not popup. `AGREED`
+2. Requests the scope `api://<clientId>/access_as_user` on login and on every
+   silent token refresh — this is also the token's audience. `AGREED`
+3. Sends `Authorization: Bearer <token>` on every `/api` call. No cookie, no
+   `credentials: "include"` — the bearer token is the only credential. `AGREED`
+4. On `401` or `403`: re-attempts a silent token acquisition and replays the
+   request once. If that also fails (or the silent attempt needs interaction),
+   the user is redirected into the MSAL sign-in flow. The one exception is a `403`
+   for a user who *is* signed in — treated as a permissions problem and surfaced as
+   an error, since redirecting to a provider that will sign them in again loops
+   forever. `AGREED`
 
-**The caveat you need to know about** `OPEN` — see §7.8
+**What the backend needs to do** `OPEN`
 
-Azure Static Web Apps does **not** expose a raw token from `/.auth/me` by default.
-So in the default deployment `token` is `null`, no `Authorization` header is sent,
-and requests authenticate on the Easy Auth cookie alone. Two ways to close it:
+Validate the bearer token yourself (no Easy Auth host in front of you to do it for
+you):
 
-- request `id_token` / `access_token` as a claim in the SWA config, or
-- have the API mint its own token.
-
-Either works and **the client needs no change** — it already attaches whatever token
-`/.auth/me` exposes. But if your API is written to require a bearer header, it will
-reject every request until one of the two is done. Please pick one.
+- **Issuer**: `https://login.microsoftonline.com/<tenant>/v2.0` — `entraTenantId` in
+  `infrastructure/main.bicepparam`.
+- **Audience**: either the raw client ID or `api://<client-id>` — the app
+  registration's `requestedAccessTokenVersion` is pinned to `2`, so check both forms
+  are accepted, libraries differ on which one they put in `aud`.
+- **Signing keys**: fetch from the tenant's JWKS endpoint (standard for any JWT
+  validation library — `PyJWT` + `python-jose`, or `msal`'s own validation helpers).
 
 **2.8 — permission model.** The brief asks us to state who is allowed to touch what.
 The client only gates rendering: no principal → sign-in screen. That is not
@@ -450,7 +461,9 @@ Answer these and the contract is closed. One line each is enough.
    *Probably the most important question here.*
 7. **Error body shape.** The client reads `message` → `error` → `detail`. Which do
    you use?
-8. **Bearer token: SWA claim or an app-minted token?** (§2)
+8. **JWT validation wired up?** The client always sends a real MSAL-acquired bearer
+   token now (§2) — no SWA claim configuration needed on your side. What's open is
+   whether `security.py` actually validates it yet (issuer/audience/JWKS, §2).
 
 ---
 

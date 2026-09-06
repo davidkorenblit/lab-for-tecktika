@@ -6,7 +6,7 @@ import { SignInScreen } from '@/components/SignInScreen';
 import { AUTH_DEV_BYPASS } from '@/config';
 
 export default function App() {
-  const { principal, isAuthenticated, isLoading, error, loginUrl, logoutUrl } = useAuth();
+  const { principal, isAuthenticated, isLoading, error, login, logout } = useAuth();
 
   if (isLoading) {
     return (
@@ -19,15 +19,15 @@ export default function App() {
     );
   }
 
-  // Easy Auth already gates the route in production; this is the fallback for
-  // a direct hit on the SPA before the auth cookie exists.
+  // No account signed into MSAL yet — show the sign-in screen, which starts
+  // the redirect flow on click.
   if (!isAuthenticated && !AUTH_DEV_BYPASS) {
-    return <SignInScreen error={error} loginUrl={loginUrl} />;
+    return <SignInScreen error={error} onSignIn={login} />;
   }
 
   return (
     <div className="flex h-full flex-col bg-surface text-ink">
-      <AppHeader principal={principal} logoutUrl={logoutUrl} />
+      <AppHeader principal={principal} onSignOut={logout} />
       <ErrorBoundary>
         <ChatWindow />
       </ErrorBoundary>

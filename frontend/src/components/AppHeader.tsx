@@ -3,10 +3,10 @@ import type { ClientPrincipal } from '@/types';
 
 interface AppHeaderProps {
   principal: ClientPrincipal | null;
-  logoutUrl: (redirect?: string) => string;
+  onSignOut: () => void;
 }
 
-export function AppHeader({ principal, logoutUrl }: AppHeaderProps) {
+export function AppHeader({ principal, onSignOut }: AppHeaderProps) {
   const { activeJobs } = useJobs();
   const name = principal?.userDetails ?? 'Signed in';
 
@@ -36,12 +36,13 @@ export function AppHeader({ principal, logoutUrl }: AppHeaderProps) {
         <span className="hidden max-w-40 truncate text-xs text-ink-muted sm:block" title={name}>
           {name}
         </span>
-        <a
-          href={logoutUrl('/')}
+        <button
+          type="button"
+          onClick={onSignOut}
           className="rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium hover:bg-surface"
         >
           Sign out
-        </a>
+        </button>
       </div>
     </header>
   );

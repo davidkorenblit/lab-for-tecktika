@@ -1,23 +1,66 @@
-import { AUTH_BASE_URL, AUTH_DEV_BYPASS, AUTH_DEV_TOKEN } from '@/config';
+import {
+  PublicClientApplication,
+  InteractionRequiredAuthError,
+  type AccountInfo,
+} from '@azure/msal-browser';
+import { AUTH_DEV_BYPASS, AUTH_DEV_TOKEN, MSAL_API_SCOPE, MSAL_CLIENT_ID, MSAL_TENANT_ID } from '@/config';
 import type { AuthSession, ClientPrincipal } from '@/types';
 
 /**
- * Easy Auth session handling.
+ * MSAL.js session handling (public client, PKCE, no secret).
  *
- * `/.auth/me` answers in one of two shapes depending on the host:
- *   - Static Web Apps: `{ clientPrincipal: {...} }`
- *   - App Service / Functions Easy Auth: `[{ access_token, id_token, ... }]`
- * Both are accepted here, and the token is looked for in the token-store
- * payload first, then in the principal's claims.
+ * One Entra ID app registration serves both roles: the SPA client that signs
+ * the user in, and the API resource whose scope (`MSAL_API_SCOPE`) is
+ * requested on login and attached as the access token's audience. The backend
+ * validates that token itself — there is no server-side auth host involved.
  */
 
 const EMPTY_SESSION: AuthSession = { principal: null, token: null, expiresAt: null };
 
-/** Refresh this long before the token actually expires. */
-const EXPIRY_SKEW_MS = 60_000;
+const loginRequest = { scopes: [MSAL_API_SCOPE] };
 
 let cachedSession: AuthSession | null = null;
 let inflight: Promise<AuthSession> | null = null;
+
+/**
+ * Built lazily, not at module scope: this file is imported by code (e.g.
+ * `apiClient.ts`) that other modules pull in under Node-environment unit
+ * tests with no `window`, and MSAL's config touches `window.location` at
+ * construction time.
+ */
+let msal: PublicClientApplication | null = null;
+function getMsalInstance(): PublicClientApplication {
+  if (!msal) {
+    msal = new PublicClientApplication({
+      auth: {
+        clientId: MSAL_CLIENT_ID,
+        authority: `https://login.microsoftonline.com/${MSAL_TENANT_ID}`,
+        redirectUri: window.location.origin,
+        postLogoutRedirectUri: window.location.origin,
+      },
+      cache: {
+        // Survives a full page redirect (required for the auth code flow)
+        // without leaking the token to other tabs/sessions the way
+        // localStorage would.
+        cacheLocation: 'sessionStorage',
+      },
+    });
+  }
+  return msal;
+}
+
+/** Initializes MSAL and consumes the redirect response exactly once per page load. */
+let initPromise: Promise<void> | null = null;
+function ensureInitialized(): Promise<void> {
+  if (!initPromise) {
+    const instance = getMsalInstance();
+    initPromise = instance
+      .initialize()
+      .then(() => instance.handleRedirectPromise())
+      .then(() => undefined);
+  }
+  return initPromise;
+}
 
 export function clearCachedSession(): void {
   cachedSession = null;
@@ -26,7 +69,7 @@ export function clearCachedSession(): void {
 
 /**
  * Loads the session, de-duplicating concurrent callers so a burst of API calls
- * on first paint results in a single `/.auth/me` request.
+ * on first paint results in a single silent-token acquisition.
  */
 export async function loadSession(force = false): Promise<AuthSession> {
   if (AUTH_DEV_BYPASS) {
@@ -43,7 +86,7 @@ export async function loadSession(force = false): Promise<AuthSession> {
     return cachedSession;
   }
 
-  if (!force && cachedSession && !isExpired(cachedSession)) return cachedSession;
+  if (!force && cachedSession) return cachedSession;
   if (!force && inflight) return inflight;
 
   inflight = fetchSession()
@@ -59,36 +102,27 @@ export async function loadSession(force = false): Promise<AuthSession> {
 }
 
 async function fetchSession(): Promise<AuthSession> {
-  const response = await fetch(`${AUTH_BASE_URL}/.auth/me`, {
-    headers: { Accept: 'application/json' },
-    credentials: 'include',
-    cache: 'no-store',
-  });
+  await ensureInitialized();
+  const instance = getMsalInstance();
 
-  // Anonymous users get 401/403 from some hosts and an empty body from others.
-  if (response.status === 401 || response.status === 403) return EMPTY_SESSION;
-  if (!response.ok) {
-    throw new Error(`Failed to load auth session (${response.status})`);
+  const account = instance.getAllAccounts()[0];
+  if (!account) return EMPTY_SESSION;
+
+  try {
+    const result = await instance.acquireTokenSilent({ ...loginRequest, account });
+    return toSession(result.account, result.accessToken, result.expiresOn);
+  } catch (error) {
+    // A silent refresh can genuinely need interaction (e.g. revoked consent,
+    // expired session on the identity provider's side). Surface as signed-out
+    // rather than throwing — the sign-in screen's button starts a fresh redirect.
+    if (error instanceof InteractionRequiredAuthError) return EMPTY_SESSION;
+    throw error;
   }
-
-  const payload = (await response.json().catch(() => null)) as unknown;
-  return normaliseSession(payload);
 }
 
-/**
- * Asks Easy Auth to refresh the token store, then re-reads the session. Called
- * once on a 401 before surfacing the failure to the caller.
- */
+/** Re-attempts a silent token acquisition. Called once on a 401 before giving up. */
 export async function refreshSession(): Promise<AuthSession> {
   if (AUTH_DEV_BYPASS) return loadSession(true);
-  try {
-    await fetch(`${AUTH_BASE_URL}/.auth/refresh`, {
-      credentials: 'include',
-      cache: 'no-store',
-    });
-  } catch {
-    /* refresh is best effort; loadSession below decides the outcome */
-  }
   return loadSession(true);
 }
 
@@ -98,92 +132,39 @@ export async function getAccessToken(): Promise<string | null> {
   return session.token;
 }
 
-export function loginUrl(provider = 'aad', redirect = window.location.pathname): string {
-  return `${AUTH_BASE_URL}/.auth/login/${provider}?post_login_redirect_uri=${encodeURIComponent(redirect)}`;
+/** Starts the MSAL redirect sign-in flow. Navigates away; does not return. */
+export async function login(): Promise<void> {
+  await ensureInitialized();
+  await getMsalInstance().loginRedirect(loginRequest);
 }
 
-export function logoutUrl(redirect = '/'): string {
-  return `${AUTH_BASE_URL}/.auth/logout?post_logout_redirect_uri=${encodeURIComponent(redirect)}`;
+/** Starts the MSAL redirect sign-out flow. Navigates away; does not return. */
+export async function logout(): Promise<void> {
+  await ensureInitialized();
+  const instance = getMsalInstance();
+  const account = instance.getAllAccounts()[0];
+  clearCachedSession();
+  await instance.logoutRedirect({ account });
 }
 
 export function isAuthenticated(session: AuthSession | null | undefined): boolean {
   return Boolean(session?.principal);
 }
 
-function isExpired(session: AuthSession): boolean {
-  if (session.expiresAt === null) return false;
-  return Date.now() >= session.expiresAt - EXPIRY_SKEW_MS;
-}
+function toSession(account: AccountInfo, token: string, expiresOn: Date | null): AuthSession {
+  const claims = (account.idTokenClaims ?? {}) as Record<string, unknown>;
+  const roles = Array.isArray(claims.roles) ? (claims.roles as string[]) : [];
 
-/* ------------------------------- normalising ------------------------------ */
-
-interface TokenStoreEntry {
-  access_token?: string;
-  id_token?: string;
-  expires_on?: string | number;
-  provider_name?: string;
-  user_id?: string;
-  user_claims?: Array<{ typ: string; val: string }>;
-}
-
-function normaliseSession(payload: unknown): AuthSession {
-  if (!payload) return EMPTY_SESSION;
-
-  // App Service / Functions Easy Auth token store.
-  if (Array.isArray(payload)) {
-    const entry = payload[0] as TokenStoreEntry | undefined;
-    if (!entry) return EMPTY_SESSION;
-    const claims = entry.user_claims ?? [];
-    return {
-      principal: {
-        identityProvider: entry.provider_name ?? 'aad',
-        userId: entry.user_id ?? claimValue(claims, 'oid') ?? '',
-        userDetails:
-          entry.user_id ?? claimValue(claims, 'preferred_username') ?? claimValue(claims, 'name') ?? '',
-        userRoles: claims.filter((c) => c.typ === 'roles').map((c) => c.val),
-        claims,
-      },
-      token: entry.access_token ?? entry.id_token ?? null,
-      expiresAt: parseExpiry(entry.expires_on),
-    };
-  }
-
-  const record = payload as { clientPrincipal?: ClientPrincipal | null };
-  const principal = record.clientPrincipal ?? null;
-  if (!principal) return EMPTY_SESSION;
-
-  const claims = principal.claims ?? [];
-  // SWA does not return the raw token by default; it shows up as a claim when
-  // the app requests it. Falling through to null is fine — the client then
-  // relies on the auth cookie plus the principal header SWA injects server-side.
-  const token =
-    claimValue(claims, 'id_token') ??
-    claimValue(claims, 'access_token') ??
-    claimValue(claims, 'idp_access_token') ??
-    null;
-
-  if (!token && import.meta.env.DEV) {
-    console.warn(
-      '[auth] /.auth/me returned no bearer token; API calls will rely on the Easy Auth cookie.',
-    );
-  }
+  const principal: ClientPrincipal = {
+    identityProvider: 'aad',
+    userId: account.localAccountId,
+    userDetails: account.username,
+    userRoles: roles,
+  };
 
   return {
     principal,
     token,
-    expiresAt: parseExpiry(claimValue(claims, 'exp')),
+    expiresAt: expiresOn ? expiresOn.getTime() : null,
   };
-}
-
-function claimValue(claims: Array<{ typ: string; val: string }>, type: string): string | undefined {
-  return claims.find((claim) => claim.typ === type || claim.typ.endsWith(`/${type}`))?.val;
-}
-
-function parseExpiry(value: string | number | undefined): number | null {
-  if (value === undefined) return null;
-  if (typeof value === 'number') return value > 1e12 ? value : value * 1000;
-  const asNumber = Number(value);
-  if (!Number.isNaN(asNumber) && asNumber > 0) return asNumber > 1e12 ? asNumber : asNumber * 1000;
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? null : parsed;
 }

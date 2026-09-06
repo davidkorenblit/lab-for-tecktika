@@ -3,8 +3,15 @@ const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 /** Same-origin by default: the SPA and the API share a Static Web App. */
 export const API_BASE_URL = trimTrailingSlash(import.meta.env.VITE_API_BASE_URL ?? '');
 
-/** Easy Auth endpoints (`/.auth/me`, `/.auth/refresh`, `/.auth/login/aad`). */
-export const AUTH_BASE_URL = trimTrailingSlash(import.meta.env.VITE_AUTH_BASE_URL ?? '');
+/**
+ * Entra ID (Azure AD) app registration used for MSAL.js sign-in (public client,
+ * PKCE, no secret). One App Registration serves both roles: SPA client and the
+ * API resource whose scope is requested — see `infrastructure/scripts/register-entra-app.sh`.
+ */
+export const MSAL_CLIENT_ID = import.meta.env.VITE_MSAL_CLIENT_ID ?? '';
+export const MSAL_TENANT_ID = import.meta.env.VITE_MSAL_TENANT_ID ?? '';
+/** Requested on login and attached as the Bearer token's audience for `/api` calls. */
+export const MSAL_API_SCOPE = import.meta.env.VITE_MSAL_API_SCOPE ?? '';
 
 /*
  * Local-development escape hatch for machines with no Easy Auth host.

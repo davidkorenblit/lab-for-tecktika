@@ -1,9 +1,9 @@
 interface SignInScreenProps {
   error: Error | null;
-  loginUrl: (provider?: string, redirect?: string) => string;
+  onSignIn: () => void;
 }
 
-export function SignInScreen({ error, loginUrl }: SignInScreenProps) {
+export function SignInScreen({ error, onSignIn }: SignInScreenProps) {
   return (
     <div className="flex h-full items-center justify-center bg-surface p-6">
       <div className="w-full max-w-sm rounded-2xl border border-line bg-surface-raised p-6 text-center">
@@ -24,12 +24,13 @@ export function SignInScreen({ error, loginUrl }: SignInScreenProps) {
           </p>
         )}
 
-        <a
-          href={loginUrl('aad', window.location.pathname)}
-          className="mt-4 block rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:opacity-90"
+        <button
+          type="button"
+          onClick={onSignIn}
+          className="mt-4 block w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:opacity-90"
         >
           Sign in with Microsoft
-        </a>
+        </button>
       </div>
     </div>
   );

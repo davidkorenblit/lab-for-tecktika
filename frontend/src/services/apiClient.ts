@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '@/config';
-import { clearCachedSession, getAccessToken, loginUrl, refreshSession } from './auth';
+import { clearCachedSession, getAccessToken, login, refreshSession } from './auth';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -36,14 +36,13 @@ let redirectingToLogin = false;
 function redirectToLogin(): void {
   if (redirectingToLogin) return;
   redirectingToLogin = true;
-  const here = `${window.location.pathname}${window.location.search}`;
-  window.location.assign(loginUrl('aad', here));
+  void login();
 }
 
 /**
  * The single choke point every API call goes through — this is the
- * "interceptor". It attaches the Easy Auth bearer token, sends the auth cookie,
- * and on a rejected request refreshes the session once and replays it.
+ * "interceptor". It attaches the MSAL bearer token, and on a rejected request
+ * refreshes the session once (a fresh silent token acquisition) and replays it.
  *
  * If the replay is rejected too, the session is genuinely gone and the user is
  * sent to sign in rather than being shown "Request failed with status 401".
@@ -71,9 +70,6 @@ export async function authorizedFetch(path: string, options: RequestOptions = {}
       ...rest,
       headers: merged,
       body: payload,
-      // Easy Auth's session cookie rides along for hosts that use it instead of
-      // (or in addition to) the bearer token.
-      credentials: 'include',
     });
   };
 

@@ -7,13 +7,12 @@
 
 /* ---------------------------------- auth --------------------------------- */
 
-/** Azure Static Web Apps `/.auth/me` client principal. */
+/** Derived from the MSAL account signed into the Entra ID app registration. */
 export interface ClientPrincipal {
   identityProvider: string;
   userId: string;
   userDetails: string;
   userRoles: string[];
-  claims?: Array<{ typ: string; val: string }>;
 }
 
 export interface AuthSession {
