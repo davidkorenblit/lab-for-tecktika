@@ -1,8 +1,9 @@
-from azure.identity import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from azure.data.tables import TableServiceClient
 from azure.storage.queue import QueueServiceClient
 from azure.storage.blob import BlobServiceClient
 from azure.search.documents import SearchClient
+from openai import AzureOpenAI
 from app.core.config import settings
 
 
@@ -45,5 +46,17 @@ def get_search_client() -> SearchClient:
         endpoint=settings.azure_search_endpoint,
         index_name=settings.azure_search_index_name,
         credential=credential,
+    )
+
+def get_openai_client() -> AzureOpenAI:
+    token_provider = get_bearer_token_provider(
+        credential,
+        "https://cognitiveservices.azure.com/.default",
+    )
+
+    return AzureOpenAI(
+        azure_endpoint=settings.azure_openai_endpoint,
+        api_version=settings.azure_openai_api_version,
+        azure_ad_token_provider=token_provider,
     )
 

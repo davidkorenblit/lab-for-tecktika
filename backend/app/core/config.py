@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     # Azure OpenAI
     azure_openai_endpoint: str = ""
+    azure_openai_api_version: str = ""
     openai_chat_deployment: str = ""
     openai_embedding_deployment: str = ""
 
