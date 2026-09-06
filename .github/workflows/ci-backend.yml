@@ -1,11 +1,12 @@
 name: Backend CI/CD
 
-# NOTE: backend/ isn't merged to main yet, so this workflow doesn't fire on
-# anything today (the path filters below never match). It's written now so
-# the pipeline exists the moment backend lands, matching ci-worker.yml/
-# ci-frontend.yml. The deploy job additionally needs backend/Dockerfile,
-# which does not exist yet on any backend branch as of 2026-09-06 — add one
-# before merging, or this job will fail at the build step.
+# NOTE: main's backend/ is still the original empty scaffold (placeholder
+# files with matching names, 0 bytes) - the real implementation lives
+# unmerged on feature/backend-jobs-contract as of 2026-09-06. `pytest`
+# collecting 0 tests against the empty scaffold is expected right now, not a
+# failure (handled below). Once real backend code merges, this starts testing
+# it for real. The deploy job additionally needs backend/Dockerfile, which
+# doesn't exist on any backend branch yet - add one before relying on deploy.
 
 on:
   push:
@@ -38,7 +39,18 @@ jobs:
           pip install pytest
 
       - name: Run tests
-        run: pytest tests/ -v
+        # Exit code 5 = no tests collected, expected while backend/ is still
+        # the empty scaffold. Any other non-zero exit is a real failure.
+        run: |
+          set +e
+          pytest tests/ -v
+          code=$?
+          set -e
+          if [ "$code" -eq 5 ]; then
+            echo "No tests collected yet (empty scaffold) - not failing the build."
+            exit 0
+          fi
+          exit "$code"
 
   build-and-deploy:
     needs: test
