@@ -31,7 +31,11 @@ jobs:
           pip install pytest
 
       - name: Run tests
-        run: pytest tests/ -v
+        # python -m pytest (not bare `pytest`) so the cwd (worker/) is on
+        # sys.path - the test files import top-level packages like
+        # `services.search_indexer` and `models.queue_message` with no
+        # conftest.py or pytest pythonpath config to do that for them.
+        run: python -m pytest tests/ -v
 
   deploy:
     needs: test
