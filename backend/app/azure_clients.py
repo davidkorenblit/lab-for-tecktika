@@ -2,6 +2,7 @@ from azure.identity import DefaultAzureCredential
 from azure.data.tables import TableServiceClient
 from azure.storage.queue import QueueServiceClient
 from azure.storage.blob import BlobServiceClient
+from azure.search.documents import SearchClient
 from app.core.config import settings
 
 
@@ -38,3 +39,11 @@ def get_blob_service_client() -> BlobServiceClient:
         account_url=account_url,
         credential=credential,
     )
+
+def get_search_client() -> SearchClient:
+    return SearchClient(
+        endpoint=settings.azure_search_endpoint,
+        index_name=settings.azure_search_index_name,
+        credential=credential,
+    )
+

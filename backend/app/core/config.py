@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     # Azure AI Search
     azure_search_endpoint: str = ""
     azure_search_index_name: str = ""
+    azure_search_semantic_configuration_name: str = ""
 
     # Azure AI Search schema fields
     aas_field_chunk_id: str = "chunkId"
@@ -18,6 +19,7 @@ class Settings(BaseSettings):
     aas_field_content: str = "content"
     aas_field_page: str = "page"
     aas_field_source_url: str = "sourceUrl"
+    aas_field_vector: str = "text_vector"
 
     # Azure OpenAI
     azure_openai_endpoint: str = ""
