@@ -32,7 +32,7 @@ def test_upload_document_success():
     with (
         patch(
             "app.api.v1.endpoints.documents.upload_document",
-            return_value='"etag-123"',
+            return_value=('"etag-123"', "staging/contract.pdf"),
         ) as mock_upload_document,
         patch(
             "app.api.v1.endpoints.documents.create_job_and_enqueue",
@@ -58,6 +58,7 @@ def test_upload_document_success():
 
     assert body["file_name"] == "contract.pdf"
     assert body["etag"] == '"etag-123"'
+    assert body["source_blob_path"] == "staging/contract.pdf"
     assert body["job_id"] == "job-123"
     assert body["job_status"] == "QUEUED"
     assert body["document_id"]
@@ -75,4 +76,5 @@ def test_upload_document_success():
     assert job_call["blob_name"] == "contract.pdf"
     assert job_call["file_name"] == "contract.pdf"
     assert job_call["document_id"] == body["document_id"]
-    assert job_call["etag"] == '"etag-123"'    
+    assert job_call["etag"] == '"etag-123"'
+    assert job_call["source_blob_path"] == "staging/contract.pdf"    

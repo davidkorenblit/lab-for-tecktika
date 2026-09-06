@@ -30,7 +30,7 @@ async def upload_document_endpoint(
         detail="File size exceeds the 50 MB limit",
     )
 
-    etag = upload_document(
+    etag, source_blob_path = upload_document(
         blob_name=file.filename,
         data=file_data,
         document_id=document_id,
@@ -43,12 +43,14 @@ async def upload_document_endpoint(
         requested_by="local-dev",
         document_id=document_id,
         etag=etag,
+        source_blob_path=source_blob_path,
     )
 
     return {
         "document_id": document_id,
         "file_name": file.filename,
         "etag": etag,
+        "source_blob_path": source_blob_path,
         "job_id": job.RowKey,
         "job_status": job.status,
     }

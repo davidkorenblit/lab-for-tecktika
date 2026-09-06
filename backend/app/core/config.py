@@ -26,14 +26,14 @@ class Settings(BaseSettings):
     azure_storage_account_name: str = ""
 
     # Blob Storage
-    azure_blob_container_documents: str = ""
-    azure_blob_container_staging: str = ""
+    azure_blob_container_documents: str = "pdf-library"
+    azure_blob_container_staging: str = "staging"
 
     # Queue Storage
-    azure_queue_name: str = ""
+    azure_queue_name: str = "index-jobs"
 
     # Table Storage
-    azure_table_name: str = ""
+    azure_table_name: str = "jobstatus"
 
     # Job statuses
     job_status_queued: str = "QUEUED"
