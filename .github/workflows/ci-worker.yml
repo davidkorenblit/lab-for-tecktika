@@ -1,0 +1,64 @@
+name: Worker CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "worker/**"
+      - ".github/workflows/ci-worker.yml"
+  pull_request:
+    paths:
+      - "worker/**"
+      - ".github/workflows/ci-worker.yml"
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run tests
+        # python -m pytest (not bare `pytest`) so the cwd (worker/) is on
+        # sys.path - the test files import top-level packages like
+        # `services.search_indexer` and `models.queue_message` with no
+        # conftest.py or pytest pythonpath config to do that for them.
+        run: python -m pytest tests/ -v
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      id-token: write # required for OIDC federated login, no client secret stored
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Azure (OIDC, no secrets)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.FUNCTION_APP_NAME }}
+          package: worker
+          scm-do-build-during-deployment: true
+          respect-funcignore: true

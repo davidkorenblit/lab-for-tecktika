@@ -7,11 +7,17 @@ param location string = resourceGroup().location
 @description('Name of the blob container that holds the source-of-truth PDFs.')
 param blobContainerName string = 'pdf-library'
 
+@description('Name of the blob container that receives uploads before the Worker copies them into the primary container.')
+param stagingContainerName string = 'staging'
+
 @description('Name of the queue that receives change events for the Worker to consume.')
 param queueName string = 'index-jobs'
 
 @description('Name of the table that tracks job status and per-file ETags.')
 param jobStatusTableName string = 'jobstatus'
+
+@description('Origins allowed to PUT/GET directly against the staging container (frontend upload flow). Empty disables CORS.')
+param stagingCorsAllowedOrigins array = []
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName
@@ -29,11 +35,37 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
 resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {
   parent: storageAccount
   name: 'default'
+  properties: empty(stagingCorsAllowedOrigins) ? {} : {
+    cors: {
+      corsRules: [
+        {
+          allowedOrigins: stagingCorsAllowedOrigins
+          allowedMethods: [
+            'PUT'
+            'GET'
+            'HEAD'
+            'OPTIONS'
+          ]
+          allowedHeaders: [ '*' ]
+          exposedHeaders: [ '*' ]
+          maxAgeInSeconds: 3600
+        }
+      ]
+    }
+  }
 }
 
 resource pdfContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
   parent: blobService
   name: blobContainerName
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+resource stagingContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  parent: blobService
+  name: stagingContainerName
   properties: {
     publicAccess: 'None'
   }
@@ -49,6 +81,11 @@ resource indexQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2023
   name: queueName
 }
 
+resource poisonQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-01-01' = {
+  parent: queueService
+  name: '${queueName}-poison'
+}
+
 resource tableService 'Microsoft.Storage/storageAccounts/tableServices@2023-01-01' = {
   parent: storageAccount
   name: 'default'
@@ -61,5 +98,7 @@ resource jobStatusTable 'Microsoft.Storage/storageAccounts/tableServices/tables@
 
 output storageAccountName string = storageAccount.name
 output blobContainerName string = pdfContainer.name
+output stagingContainerName string = stagingContainer.name
 output queueName string = indexQueue.name
+output poisonQueueName string = poisonQueue.name
 output jobStatusTableName string = jobStatusTable.name

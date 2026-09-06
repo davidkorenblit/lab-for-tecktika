@@ -12,6 +12,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+env/
 venv/
 .pytest_cache/
 .mypy_cache/
@@ -36,3 +37,6 @@ worker/obj/
 Thumbs.db
 .vscode/
 .idea/
+
+# --- Local git worktrees (other branches checked out side-by-side for review) ---
+/wt-*/

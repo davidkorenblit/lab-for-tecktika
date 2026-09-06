@@ -1,0 +1,107 @@
+name: Backend CI/CD
+
+# NOTE: main's backend/ is still the original empty scaffold (placeholder
+# files with matching names, 0 bytes) - the real implementation lives
+# unmerged on feature/backend-jobs-contract as of 2026-09-06. `pytest`
+# collecting 0 tests against the empty scaffold is expected right now, not a
+# failure (handled below). Once real backend code merges, this starts testing
+# it for real. The deploy job additionally needs backend/Dockerfile, which
+# doesn't exist on any backend branch yet - add one before relying on deploy.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/ci-backend.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/ci-backend.yml"
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run tests
+        # Exit code 5 = no tests collected, expected while backend/ is still
+        # the empty scaffold. Any other non-zero exit is a real failure.
+        run: |
+          set +e
+          pytest tests/ -v
+          code=$?
+          set -e
+          if [ "$code" -eq 5 ]; then
+            echo "No tests collected yet (empty scaffold) - not failing the build."
+            exit 0
+          fi
+          exit "$code"
+
+  build-and-deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      id-token: write # required for OIDC federated login, no client secret stored
+      contents: read
+      packages: write # push the built image to GitHub Container Registry
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for Dockerfile
+        id: dockerfile
+        run: |
+          if [ -f backend/Dockerfile ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::backend/Dockerfile not found - skipping build/deploy until it's added."
+          fi
+
+      - name: Log in to GitHub Container Registry
+        if: steps.dockerfile.outputs.exists == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        if: steps.dockerfile.outputs.exists == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: ghcr.io/${{ github.repository }}-backend:${{ github.sha }},ghcr.io/${{ github.repository }}-backend:latest
+
+      - name: Log in to Azure (OIDC, no secrets)
+        if: steps.dockerfile.outputs.exists == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update Container App image
+        if: steps.dockerfile.outputs.exists == 'true'
+        run: |
+          az containerapp update \
+            --name "${{ vars.BACKEND_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "ghcr.io/${{ github.repository }}-backend:${{ github.sha }}"
