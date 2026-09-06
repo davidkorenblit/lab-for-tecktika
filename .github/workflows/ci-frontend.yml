@@ -40,6 +40,14 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # Not secret - a public client's clientId/tenantId/scope are meant
+          # to be visible in the shipped bundle. Vite only inlines VITE_*
+          # vars that are actually set at build time, so these must be
+          # injected here explicitly.
+          VITE_MSAL_CLIENT_ID: ${{ vars.VITE_MSAL_CLIENT_ID }}
+          VITE_MSAL_TENANT_ID: ${{ vars.VITE_MSAL_TENANT_ID }}
+          VITE_MSAL_API_SCOPE: ${{ vars.VITE_MSAL_API_SCOPE }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
