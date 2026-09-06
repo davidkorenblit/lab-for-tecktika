@@ -154,3 +154,53 @@ def test_search_documents_tool_executes_embedding_and_search() -> None:
     )
 
     assert result == expected_results
+
+
+def test_parse_tool_arguments_returns_validated_model() -> None:
+    from app.agent.runner import parse_tool_arguments
+    from app.agent.tools.document_tools import DeleteDocumentTool
+
+    tool = DeleteDocumentTool()
+
+    result = parse_tool_arguments(
+        tool,
+        '{"file_name":"contract.pdf"}',
+    )
+
+    assert result.file_name == "contract.pdf"
+
+
+def test_parse_tool_arguments_rejects_invalid_json() -> None:
+    import pytest
+
+    from app.agent.runner import parse_tool_arguments
+    from app.agent.tools.document_tools import DeleteDocumentTool
+
+    tool = DeleteDocumentTool()
+
+    with pytest.raises(
+        ValueError,
+        match="Tool arguments are not valid JSON",
+    ):
+        parse_tool_arguments(
+            tool,
+            '{"file_name":"contract.pdf"',
+        )
+
+
+def test_parse_tool_arguments_rejects_non_object_json() -> None:
+    import pytest
+
+    from app.agent.runner import parse_tool_arguments
+    from app.agent.tools.document_tools import DeleteDocumentTool
+
+    tool = DeleteDocumentTool()
+
+    with pytest.raises(
+        ValueError,
+        match="Tool arguments must be a JSON object",
+    ):
+        parse_tool_arguments(
+            tool,
+            '["contract.pdf"]',
+        )
