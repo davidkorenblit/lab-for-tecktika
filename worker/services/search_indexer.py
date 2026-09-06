@@ -23,7 +23,7 @@ from azure.search.documents.indexes.models import (
     SearchIndexer,
     FieldMapping,
     IndexingParameters,
-    SearchIndexerIndexProjections,
+    SearchIndexerIndexProjection,
     SearchIndexerIndexProjectionSelector,
     SearchIndexerIndexProjectionsParameters,
     IndexProjectionMode,
@@ -114,43 +114,43 @@ class SearchPipelineSetupService:
         logging.info(f"Setting up Search Index: '{self.index_name}'...")
 
         fields = [
-            SimpleField(
+            SearchableField(
                 name="id",
-                type=SearchFieldDataType.STRING,
                 key=True,
                 filterable=True,
                 sortable=True,
+                analyzer_name="keyword",
             ),
             SimpleField(
                 name="parentDocumentId",
-                type=SearchFieldDataType.STRING,
+                type=SearchFieldDataType.String,
                 filterable=True,
                 sortable=True,
             ),
             SearchableField(
                 name="fileName",
-                type=SearchFieldDataType.STRING,
+                type=SearchFieldDataType.String,
                 filterable=True,
                 sortable=True,
             ),
             SimpleField(
                 name="page",
-                type=SearchFieldDataType.INT32,
+                type=SearchFieldDataType.Int32,
                 filterable=True,
                 sortable=True,
             ),
             SimpleField(
                 name="sourceUrl",
-                type=SearchFieldDataType.STRING,
+                type=SearchFieldDataType.String,
                 filterable=False,
             ),
             SearchableField(
                 name="content",
-                type=SearchFieldDataType.STRING,
+                type=SearchFieldDataType.String,
             ),
             SearchField(
                 name="text_vector",
-                type=SearchFieldDataType.COLLECTION(SearchFieldDataType.SINGLE),
+                type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
                 searchable=True,
                 vector_search_dimensions=1536,
                 vector_search_profile_name="hnsw-profile",
@@ -227,7 +227,7 @@ class SearchPipelineSetupService:
         except TypeError:
             embedding_skill = AzureOpenAIEmbeddingSkill(resource_uri=self.openai_endpoint, **skill_kwargs)
 
-        index_projections = SearchIndexerIndexProjections(
+        index_projection = SearchIndexerIndexProjection(
             selectors=[
                 SearchIndexerIndexProjectionSelector(
                     target_index_name=self.index_name,
@@ -246,15 +246,12 @@ class SearchPipelineSetupService:
             ),
         )
 
-        skillset_kwargs = {
-            "name": self.skillset_name,
-            "description": "Skillset for PDF page splitting and OpenAI vector embedding",
-            "skills": [split_skill, embedding_skill],
-        }
-        try:
-            skillset = SearchIndexerSkillset(index_projections=index_projections, **skillset_kwargs)
-        except TypeError:
-            skillset = SearchIndexerSkillset(index_projection=index_projections, **skillset_kwargs)
+        skillset = SearchIndexerSkillset(
+            name=self.skillset_name,
+            description="Skillset for PDF page splitting and OpenAI vector embedding",
+            skills=[split_skill, embedding_skill],
+            index_projection=index_projection,
+        )
 
         result = self.indexer_client.create_or_update_skillset(skillset)
         logging.info(f"✓ Skillset '{result.name}' successfully configured.")

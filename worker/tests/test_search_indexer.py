@@ -58,9 +58,10 @@ def test_search_pipeline_setup(MockCredential, MockIndexClient, MockIndexerClien
     assert len(skillset_arg.skills) == 2
     assert skillset_arg.skills[0].text_split_mode == "pages"
     assert skillset_arg.skills[1].deployment_name == service.embedding_deployment
-    assert skillset_arg.index_projections is not None
-    assert len(skillset_arg.index_projections.selectors) == 1
-    selector = skillset_arg.index_projections.selectors[0]
+    proj = getattr(skillset_arg, "index_projection", None) or getattr(skillset_arg, "index_projections", None)
+    assert proj is not None
+    assert len(proj.selectors) == 1
+    selector = proj.selectors[0]
     assert selector.target_index_name == service.index_name
     assert selector.parent_key_field_name == "parentDocumentId"
     assert selector.source_context == "/document/pages/*"
