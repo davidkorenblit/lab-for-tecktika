@@ -1,13 +1,5 @@
 name: Backend CI/CD
 
-# NOTE: main's backend/ is still the original empty scaffold (placeholder
-# files with matching names, 0 bytes) - the real implementation lives
-# unmerged on feature/backend-jobs-contract as of 2026-09-06. `pytest`
-# collecting 0 tests against the empty scaffold is expected right now, not a
-# failure (handled below). Once real backend code merges, this starts testing
-# it for real. The deploy job additionally needs backend/Dockerfile, which
-# doesn't exist on any backend branch yet - add one before relying on deploy.
-
 on:
   push:
     branches: [main]
@@ -43,7 +35,7 @@ jobs:
         # the empty scaffold. Any other non-zero exit is a real failure.
         run: |
           set +e
-          pytest tests/ -v
+          python -m pytest tests/ -v
           code=$?
           set -e
           if [ "$code" -eq 5 ]; then
