@@ -25,6 +25,8 @@ class Settings:
     # Search Pipeline Names
     SEARCH_INDEX_NAME: str = os.getenv("AZURE_SEARCH_INDEX", "pdf-chunks-index")
     SEARCH_INDEXER_NAME: str = os.getenv("AZURE_SEARCH_INDEXER", "pdf-chunks-indexer")
+    INDEXER_POLL_TIMEOUT_SECONDS: int = int(os.getenv("INDEXER_POLL_TIMEOUT_SECONDS", "120"))
+    INDEXER_POLL_INTERVAL_SECONDS: int = int(os.getenv("INDEXER_POLL_INTERVAL_SECONDS", "3"))
 
 
 settings = Settings()

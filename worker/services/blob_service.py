@@ -30,6 +30,7 @@ class BlobService:
             blob_client = client.get_blob_client(container=self.container_name, blob=blob_name)
             properties = blob_client.get_blob_properties()
             return properties.etag
+            
         except Exception as err:
             logging.error(f"Failed to fetch ETag for Blob '{blob_name}': {err}")
             return None

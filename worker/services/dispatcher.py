@@ -24,10 +24,12 @@ class EventDispatcher:
         self.job_service.mark_running(event.job_id, event.document_id, event.blob_name)
 
         # 2. Handle Indexing (CREATE / UPDATE) with Idempotency check
-        if event.event_type in (EventType.CREATE, EventType.UPDATE):
+        if event.event_type == EventType.UPDATE:
             if not self.blob_service.is_file_changed(event.blob_name, event.etag):
                 self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
                 return
+            self._handle_index(event)
+        elif event.event_type == EventType.CREATE:
             self._handle_index(event)
 
         # 3. Handle Surgical Deletion (DELETE)
@@ -36,15 +38,20 @@ class EventDispatcher:
 
     def _handle_index(self, event: QueueMessage) -> None:
         """
-        Triggers Azure AI Search indexer. If updating, purges old chunks first to ensure zero ghost chunks.
+        Triggers Azure AI Search indexer and awaits completion. If updating, purges old chunks first to ensure zero ghost chunks.
         """
-        if event.event_type == EventType.UPDATE:
-            logging.info(f"UPDATE event detected: purging old chunks for Doc ID: {event.document_id}")
-            self.search_service.delete_document_chunks(event.document_id)
+        try:
+            if event.event_type == EventType.UPDATE:
+                logging.info(f"UPDATE event detected: purging old chunks for Doc ID: {event.document_id}")
+                self.search_service.delete_document_chunks(event.document_id)
 
-        self.search_service.trigger_indexer()
-        self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
-        logging.info(f"Indexing completed successfully for Job ID: {event.job_id}, Doc ID: {event.document_id}")
+            self.search_service.wait_for_indexer()
+            self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
+            logging.info(f"Indexing completed successfully for Job ID: {event.job_id}, Doc ID: {event.document_id}")
+        except Exception as err:
+            logging.error(f"Indexing failed for Job ID: {event.job_id}: {err}")
+            self.job_service.mark_failed(event.job_id, event.document_id, event.blob_name, error_msg=str(err))
+            raise err
 
     def _handle_delete(self, event: QueueMessage) -> None:
         """

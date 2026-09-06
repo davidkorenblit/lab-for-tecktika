@@ -63,7 +63,7 @@ def test_dispatcher_create_flow(MockJobService, MockBlobService, MockSearchServi
     dispatcher.dispatch(event)
 
     dispatcher.job_service.mark_running.assert_called_once_with("job-1", "doc-1", "file.pdf")
-    dispatcher.search_service.trigger_indexer.assert_called_once()
+    dispatcher.search_service.wait_for_indexer.assert_called_once()
     dispatcher.job_service.mark_succeeded.assert_called_once_with("job-1", "doc-1", "file.pdf")
 
 
@@ -71,13 +71,13 @@ def test_dispatcher_create_flow(MockJobService, MockBlobService, MockSearchServi
 @patch("services.dispatcher.BlobService")
 @patch("services.dispatcher.JobService")
 def test_dispatcher_idempotency_skip(MockJobService, MockBlobService, MockSearchService):
-    """Verifies unchanged file (ETag match) skips indexer execution."""
+    """Verifies unchanged file (ETag match on UPDATE) skips indexer execution."""
     dispatcher = EventDispatcher()
     dispatcher.blob_service.is_file_changed.return_value = False
 
     event = QueueMessage(
         job_id="job-2",
-        event_type=EventType.CREATE,
+        event_type=EventType.UPDATE,
         blob_name="file.pdf",
         document_id="doc-1",
         etag="0xSAME"
@@ -85,7 +85,7 @@ def test_dispatcher_idempotency_skip(MockJobService, MockBlobService, MockSearch
     dispatcher.dispatch(event)
 
     dispatcher.job_service.mark_running.assert_called_once_with("job-2", "doc-1", "file.pdf")
-    dispatcher.search_service.trigger_indexer.assert_not_called()
+    dispatcher.search_service.wait_for_indexer.assert_not_called()
     dispatcher.job_service.mark_succeeded.assert_called_once_with("job-2", "doc-1", "file.pdf")
 
 

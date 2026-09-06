@@ -4,6 +4,7 @@ from azure.identity import DefaultAzureCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexerClient
 
+import time
 from config import settings
 
 
@@ -46,6 +47,36 @@ class SearchService:
         except Exception as err:
             logging.error(f"Failed to trigger Azure AI Search Indexer '{self.indexer_name}': {err}")
             raise err
+
+    def wait_for_indexer(
+        self,
+        timeout_seconds: Optional[int] = None,
+        poll_interval: Optional[int] = None
+    ) -> bool:
+        """
+        Triggers indexer and polls until completion, failure, or timeout.
+        """
+        timeout = timeout_seconds or settings.INDEXER_POLL_TIMEOUT_SECONDS
+        interval = poll_interval or settings.INDEXER_POLL_INTERVAL_SECONDS
+
+        client = self._get_indexer_client()
+        self.trigger_indexer()
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            time.sleep(interval)
+            status = client.get_indexer_status(self.indexer_name)
+            last = getattr(status, "last_result", None)
+
+            if not last or str(last.status).lower() in ("inprogress", "running"):
+                continue
+            if str(last.status).lower() == "success":
+                logging.info(f"Indexer '{self.indexer_name}' completed successfully.")
+                return True
+
+            raise RuntimeError(f"Indexer '{self.indexer_name}' failed with status [{last.status}]. Errors: {getattr(last, 'errors', None)}")
+
+        raise TimeoutError(f"Indexer '{self.indexer_name}' timed out after {timeout} seconds.")
 
     def delete_document_chunks(self, document_id: str) -> bool:
         """
