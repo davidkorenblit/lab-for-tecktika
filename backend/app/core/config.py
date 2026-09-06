@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "Backend Agent API"
     environment: str = "local"
+    cors_allowed_origins: str = "http://localhost:5173"
 
     # Azure AI Search
     azure_search_endpoint: str = ""
@@ -20,20 +21,21 @@ class Settings(BaseSettings):
 
     # Azure OpenAI
     azure_openai_endpoint: str = ""
-    azure_openai_chat_deployment: str = ""
+    openai_chat_deployment: str = ""
+    openai_embedding_deployment: str = ""
 
     # Azure Storage
     azure_storage_account_name: str = ""
 
     # Blob Storage
-    azure_blob_container_documents: str = ""
+    blob_container_name: str = ""
     azure_blob_container_staging: str = ""
 
     # Queue Storage
-    azure_queue_name: str = ""
+    storage_queue_name: str = ""
 
     # Table Storage
-    azure_table_name: str = ""
+    job_status_table_name: str = ""
 
     # Job statuses
     job_status_queued: str = "QUEUED"

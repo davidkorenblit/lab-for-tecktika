@@ -7,7 +7,7 @@ def get_job_queue_client():
     service_client = get_queue_service_client()
 
     return service_client.get_queue_client(
-        queue=settings.azure_queue_name,
+        queue=settings.storage_queue_name,
     )
 
 

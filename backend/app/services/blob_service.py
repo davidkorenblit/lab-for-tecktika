@@ -10,7 +10,7 @@ def upload_document(
     service_client = get_blob_service_client()
 
     container_client = service_client.get_container_client(
-        settings.azure_blob_container_documents
+        settings.blob_container_name
     )
 
     blob_client = container_client.get_blob_client(blob_name)

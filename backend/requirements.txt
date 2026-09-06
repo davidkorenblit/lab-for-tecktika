@@ -6,5 +6,8 @@ azure-data-tables
 azure-storage-queue
 azure-storage-blob
 pytest
-httpx2
+httpx
 python-multipart
+
+openai>=1.30.0
+azure-search-documents>=11.4.0

@@ -9,7 +9,7 @@ def get_job_table_client():
     service_client = get_table_service_client()
 
     return service_client.get_table_client(
-        table_name=settings.azure_table_name,
+        table_name=settings.job_status_table_name,
     )
 
 
