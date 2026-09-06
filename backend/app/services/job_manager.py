@@ -27,6 +27,7 @@ def create_job_and_enqueue(
     requested_by: str,
     document_id: str,
     etag: str | None = None,
+    source_blob_path: str | None = None,
 ) -> JobEntity:
     job_id = str(uuid4())
 
@@ -43,6 +44,7 @@ def create_job_and_enqueue(
         blob_name=blob_name,
         document_id=document_id,
         etag=etag,
+        source_blob_path=source_blob_path,
     )
 
     create_job(job)

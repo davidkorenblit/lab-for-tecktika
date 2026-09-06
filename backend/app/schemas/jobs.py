@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
 from enum import Enum
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class JobOperation(str, Enum):
@@ -33,6 +32,10 @@ class QueueMessage(BaseModel):
     blob_name: str = Field(..., description="File name in Blob Storage")
     document_id: str = Field(..., description="Unique ParentDocumentID")
     etag: str | None = Field(default=None)
+    source_blob_path: str | None = Field(
+        default=None,
+        description="Optional path of the staged source blob",
+    )
 
 
 class CreateJobRequest(BaseModel):

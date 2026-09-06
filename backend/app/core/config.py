@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Blob Storage
     blob_container_name: str = ""
-    azure_blob_container_staging: str = ""
+    staging_container_name: str = ""
 
     # Queue Storage
     storage_queue_name: str = ""
