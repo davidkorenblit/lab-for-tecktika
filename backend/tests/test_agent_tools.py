@@ -85,3 +85,72 @@ def test_delete_document_tool_rejects_unknown_fields() -> None:
                 "force": True,
             }
         )
+
+
+def test_to_openai_tool_builds_function_schema() -> None:
+    from app.agent.tools.base import to_openai_tool
+
+    tool = DeleteDocumentTool()
+
+    schema = to_openai_tool(tool)
+
+    assert schema["type"] == "function"
+
+    function = schema["function"]
+
+    assert isinstance(function, dict)
+    assert function["name"] == "delete_document"
+    assert function["description"] == "Delete an existing document"
+
+    parameters = function["parameters"]
+
+    assert isinstance(parameters, dict)
+    assert parameters["type"] == "object"
+    assert "file_name" in parameters["properties"]
+    assert "file_name" in parameters["required"]
+    assert parameters["additionalProperties"] is False
+
+
+def test_search_documents_tool_executes_embedding_and_search() -> None:
+    from unittest.mock import patch
+
+    from app.agent.tools.search_tool import SearchDocumentsTool
+
+    tool = SearchDocumentsTool()
+    arguments = tool.validate_args(
+        {
+            "query": "What is the rent?",
+            "file_name": "contract.pdf",
+        }
+    )
+
+    expected_results = [
+        {
+            "content": "Monthly rent is 5,000 NIS",
+            "file_name": "contract.pdf",
+            "page": 2,
+        }
+    ]
+
+    with (
+        patch(
+            "app.agent.tools.search_tool.create_query_embedding",
+            return_value=[0.1, 0.2, 0.3],
+        ) as mock_embedding,
+        patch(
+            "app.agent.tools.search_tool.hybrid_search",
+            return_value=expected_results,
+        ) as mock_search,
+    ):
+        result = tool.execute(arguments)
+
+    mock_embedding.assert_called_once_with("What is the rent?")
+
+    mock_search.assert_called_once_with(
+        "What is the rent?",
+        [0.1, 0.2, 0.3],
+        file_name="contract.pdf",
+        parent_document_id=None,
+    )
+
+    assert result == expected_results
