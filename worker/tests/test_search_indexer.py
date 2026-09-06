@@ -51,13 +51,24 @@ def test_search_pipeline_setup(MockCredential, MockIndexClient, MockIndexerClien
     assert vector_field.vector_search_dimensions == 1536
     assert vector_field.vector_search_profile_name == "hnsw-profile"
 
-    # Verify Skillset
+    # Verify Skillset & IndexProjections
     mock_indexer_client.create_or_update_skillset.assert_called_once()
     skillset_arg = mock_indexer_client.create_or_update_skillset.call_args[0][0]
     assert skillset_arg.name == service.skillset_name
     assert len(skillset_arg.skills) == 2
     assert skillset_arg.skills[0].text_split_mode == "pages"
     assert skillset_arg.skills[1].deployment_name == service.embedding_deployment
+    assert skillset_arg.index_projections is not None
+    assert len(skillset_arg.index_projections.selectors) == 1
+    selector = skillset_arg.index_projections.selectors[0]
+    assert selector.target_index_name == service.index_name
+    assert selector.parent_key_field_name == "parentDocumentId"
+    assert selector.source_context == "/document/pages/*"
+    selector_mappings = {m.name: m.source for m in selector.mappings}
+    assert selector_mappings["content"] == "/document/pages/*"
+    assert selector_mappings["text_vector"] == "/document/pages/*/text_vector"
+    assert selector_mappings["fileName"] == "/document/metadata_storage_name"
+    assert selector_mappings["sourceUrl"] == "/document/metadata_storage_path"
 
     # Verify Indexer
     mock_indexer_client.create_or_update_indexer.assert_called_once()
@@ -65,3 +76,4 @@ def test_search_pipeline_setup(MockCredential, MockIndexClient, MockIndexerClien
     assert indexer_arg.name == service.indexer_name
     assert indexer_arg.target_index_name == service.index_name
     assert indexer_arg.skillset_name == service.skillset_name
+    assert indexer_arg.output_field_mappings == []

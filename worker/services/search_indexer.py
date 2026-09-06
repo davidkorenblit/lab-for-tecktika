@@ -23,6 +23,10 @@ from azure.search.documents.indexes.models import (
     SearchIndexer,
     FieldMapping,
     IndexingParameters,
+    SearchIndexerIndexProjections,
+    SearchIndexerIndexProjectionSelector,
+    SearchIndexerIndexProjectionsParameters,
+    IndexProjectionMode,
 )
 
 from config import settings
@@ -200,26 +204,57 @@ class SearchPipelineSetupService:
             ],
         )
 
-        embedding_skill = AzureOpenAIEmbeddingSkill(
-            name="openai-embedding-skill",
-            description="Generates text embeddings using Azure OpenAI text-embedding-3-small",
-            context="/document/pages/*",
-            resource_uri=self.openai_endpoint,
-            deployment_name=self.embedding_deployment,
-            model_name="text-embedding-3-small",
-            inputs=[
+        # Support both resource_url and resource_uri depending on Azure SDK version
+        skill_kwargs = {
+            "name": "openai-embedding-skill",
+            "description": "Generates text embeddings using Azure OpenAI text-embedding-3-small",
+            "context": "/document/pages/*",
+            "deployment_name": self.embedding_deployment,
+            "model_name": "text-embedding-3-small",
+            "inputs": [
                 InputFieldMappingEntry(name="text", source="/document/pages/*"),
             ],
-            outputs=[
+            "outputs": [
                 OutputFieldMappingEntry(name="embedding", target_name="text_vector"),
             ],
+        }
+        openai_key = os.getenv("AZURE_OPENAI_KEY") or os.getenv("AZURE_OPENAI_API_KEY")
+        if openai_key:
+            skill_kwargs["api_key"] = openai_key
+
+        try:
+            embedding_skill = AzureOpenAIEmbeddingSkill(resource_url=self.openai_endpoint, **skill_kwargs)
+        except TypeError:
+            embedding_skill = AzureOpenAIEmbeddingSkill(resource_uri=self.openai_endpoint, **skill_kwargs)
+
+        index_projections = SearchIndexerIndexProjections(
+            selectors=[
+                SearchIndexerIndexProjectionSelector(
+                    target_index_name=self.index_name,
+                    parent_key_field_name="parentDocumentId",
+                    source_context="/document/pages/*",
+                    mappings=[
+                        InputFieldMappingEntry(name="content", source="/document/pages/*"),
+                        InputFieldMappingEntry(name="text_vector", source="/document/pages/*/text_vector"),
+                        InputFieldMappingEntry(name="fileName", source="/document/metadata_storage_name"),
+                        InputFieldMappingEntry(name="sourceUrl", source="/document/metadata_storage_path"),
+                    ],
+                )
+            ],
+            parameters=SearchIndexerIndexProjectionsParameters(
+                projection_mode=IndexProjectionMode.SKIP_INDEXING_PARENT_DOCUMENTS
+            ),
         )
 
-        skillset = SearchIndexerSkillset(
-            name=self.skillset_name,
-            description="Skillset for PDF page splitting and OpenAI vector embedding",
-            skills=[split_skill, embedding_skill],
-        )
+        skillset_kwargs = {
+            "name": self.skillset_name,
+            "description": "Skillset for PDF page splitting and OpenAI vector embedding",
+            "skills": [split_skill, embedding_skill],
+        }
+        try:
+            skillset = SearchIndexerSkillset(index_projections=index_projections, **skillset_kwargs)
+        except TypeError:
+            skillset = SearchIndexerSkillset(index_projection=index_projections, **skillset_kwargs)
 
         result = self.indexer_client.create_or_update_skillset(skillset)
         logging.info(f"✓ Skillset '{result.name}' successfully configured.")
@@ -228,20 +263,11 @@ class SearchPipelineSetupService:
     def create_or_update_indexer(self) -> SearchIndexer:
         """
         Idempotently creates or updates the Search Indexer connecting
-        the DataSource, Skillset, and Index with appropriate field mappings.
+        the DataSource, Skillset, and Index.
+        Uses Skillset IndexProjections to project 1-to-N page chunks into the index,
+        skipping parent documents.
         """
         logging.info(f"Setting up Indexer: '{self.indexer_name}'...")
-
-        field_mappings = [
-            FieldMapping(source_field_name="metadata_storage_name", target_field_name="fileName"),
-            FieldMapping(source_field_name="metadata_storage_path", target_field_name="sourceUrl"),
-            FieldMapping(source_field_name="metadata_storage_name", target_field_name="parentDocumentId"),
-        ]
-
-        output_field_mappings = [
-            FieldMapping(source_field_name="/document/pages/*", target_field_name="content"),
-            FieldMapping(source_field_name="/document/pages/*/text_vector", target_field_name="text_vector"),
-        ]
 
         parameters = IndexingParameters(
             configuration={
@@ -256,8 +282,8 @@ class SearchPipelineSetupService:
             data_source_name=self.datasource_name,
             target_index_name=self.index_name,
             skillset_name=self.skillset_name,
-            field_mappings=field_mappings,
-            output_field_mappings=output_field_mappings,
+            field_mappings=[],
+            output_field_mappings=[],
             parameters=parameters,
         )
 
