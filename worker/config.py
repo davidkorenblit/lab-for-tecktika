@@ -30,6 +30,7 @@ class Settings:
     JOBS_TABLE_NAME: str = JOB_STATUS_TABLE_NAME
 
     BLOB_CONTAINER_NAME: str = os.getenv("BLOB_CONTAINER_NAME", "pdf-library")
+    STAGING_CONTAINER_NAME: str = os.getenv("STAGING_CONTAINER_NAME", "staging")
 
     # Azure AI Services Endpoints
     AZURE_SEARCH_ENDPOINT: str = os.getenv(

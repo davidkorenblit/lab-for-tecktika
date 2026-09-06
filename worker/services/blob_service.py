@@ -48,3 +48,40 @@ class BlobService:
             return False
 
         return True
+
+    def copy_from_staging(self, source_blob_path: str, target_blob_name: str) -> bool:
+        """
+        Copies a blob from staging container to the primary documents container.
+        """
+        try:
+            client = self._get_client()
+            source_container = getattr(settings, "STAGING_CONTAINER_NAME", "staging")
+            source_blob_name = source_blob_path
+            if "/" in source_blob_path:
+                parts = source_blob_path.split("/", 1)
+                source_container, source_blob_name = parts[0], parts[1]
+
+            source_blob_client = client.get_blob_client(container=source_container, blob=source_blob_name)
+            target_blob_client = client.get_blob_client(container=self.container_name, blob=target_blob_name)
+
+            copy_props = target_blob_client.start_copy_from_url(source_blob_client.url)
+            logging.info(f"Successfully initiated copy of '{source_blob_path}' to '{self.container_name}/{target_blob_name}'")
+            return True
+        except Exception as err:
+            logging.error(f"Failed to copy '{source_blob_path}' to '{target_blob_name}': {err}")
+            raise err
+
+    def delete_blob(self, blob_name: str) -> bool:
+        """
+        Deletes a blob from the primary documents container if it exists.
+        """
+        try:
+            client = self._get_client()
+            blob_client = client.get_blob_client(container=self.container_name, blob=blob_name)
+            if blob_client.exists():
+                blob_client.delete_blob()
+                logging.info(f"Successfully deleted blob '{blob_name}' from container '{self.container_name}'")
+            return True
+        except Exception as err:
+            logging.warning(f"Failed to delete blob '{blob_name}' from container '{self.container_name}': {err}")
+            return False

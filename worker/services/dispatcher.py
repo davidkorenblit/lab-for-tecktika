@@ -23,7 +23,12 @@ class EventDispatcher:
         # 1. Update status to RUNNING in Table Storage
         self.job_service.mark_running(event.job_id, event.document_id, event.blob_name)
 
-        # 2. Handle Indexing (CREATE / UPDATE) with Idempotency check
+        # 2. If source_blob_path provided, copy from staging to documents container
+        if getattr(event, "source_blob_path", None) and event.event_type in (EventType.CREATE, EventType.UPDATE):
+            logging.info(f"Copying staging blob '{event.source_blob_path}' to documents '{event.blob_name}'")
+            self.blob_service.copy_from_staging(event.source_blob_path, event.blob_name)
+
+        # 3. Handle Indexing (CREATE / UPDATE) with Idempotency check
         if event.event_type == EventType.UPDATE:
             if not self.blob_service.is_file_changed(event.blob_name, event.etag):
                 self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
@@ -32,7 +37,7 @@ class EventDispatcher:
         elif event.event_type == EventType.CREATE:
             self._handle_index(event)
 
-        # 3. Handle Surgical Deletion (DELETE)
+        # 4. Handle Surgical Deletion (DELETE)
         elif event.event_type == EventType.DELETE:
             self._handle_delete(event)
 
@@ -55,8 +60,14 @@ class EventDispatcher:
 
     def _handle_delete(self, event: QueueMessage) -> None:
         """
-        Executes surgical deletion of all chunks for Document ID and updates status to SUCCEEDED.
+        Executes surgical deletion of all chunks for Document ID, removes blob from storage, and updates status to SUCCEEDED.
         """
-        self.search_service.delete_document_chunks(event.document_id)
-        self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
-        logging.info(f"Surgical deletion completed successfully for Job ID: {event.job_id}, Doc ID: {event.document_id}")
+        try:
+            self.search_service.delete_document_chunks(event.document_id)
+            self.blob_service.delete_blob(event.blob_name)
+            self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
+            logging.info(f"Surgical deletion completed successfully for Job ID: {event.job_id}, Doc ID: {event.document_id}")
+        except Exception as err:
+            logging.error(f"Surgical deletion failed for Job ID: {event.job_id}: {err}")
+            self.job_service.mark_failed(event.job_id, event.document_id, event.blob_name, error_msg=str(err))
+            raise err
