@@ -70,6 +70,27 @@ def test_dispatcher_create_flow(MockJobService, MockBlobService, MockSearchServi
 @patch("services.dispatcher.SearchService")
 @patch("services.dispatcher.BlobService")
 @patch("services.dispatcher.JobService")
+def test_dispatcher_staging_copy_flow(MockJobService, MockBlobService, MockSearchService):
+    """Verifies that if source_blob_path is present, copy_from_staging is triggered before indexing."""
+    dispatcher = EventDispatcher()
+
+    event = QueueMessage(
+        job_id="job-staging",
+        event_type=EventType.CREATE,
+        blob_name="target.pdf",
+        document_id="doc-staging",
+        source_blob_path="staging/upload-123.pdf"
+    )
+    dispatcher.dispatch(event)
+
+    dispatcher.blob_service.copy_from_staging.assert_called_once_with("staging/upload-123.pdf", "target.pdf")
+    dispatcher.search_service.wait_for_indexer.assert_called_once()
+    dispatcher.job_service.mark_succeeded.assert_called_once_with("job-staging", "doc-staging", "target.pdf")
+
+
+@patch("services.dispatcher.SearchService")
+@patch("services.dispatcher.BlobService")
+@patch("services.dispatcher.JobService")
 def test_dispatcher_idempotency_skip(MockJobService, MockBlobService, MockSearchService):
     """Verifies unchanged file (ETag match on UPDATE) skips indexer execution."""
     dispatcher = EventDispatcher()
