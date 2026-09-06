@@ -27,6 +27,12 @@ param tags object = {
 @description('Name of the blob container that holds the source-of-truth PDFs.')
 param blobContainerName string = 'pdf-library'
 
+@description('Name of the blob container that receives uploads before the Worker copies them into the primary container.')
+param stagingContainerName string = 'staging'
+
+@description('Origins allowed to PUT/GET directly against the staging container (frontend upload flow). Empty disables CORS.')
+param stagingCorsAllowedOrigins array = []
+
 @description('Name of the queue that receives ingestion/deletion jobs for the Worker to consume.')
 param queueName string = 'index-jobs'
 
@@ -66,6 +72,8 @@ module storage 'modules/storage.bicep' = {
   params: {
     location: location
     blobContainerName: blobContainerName
+    stagingContainerName: stagingContainerName
+    stagingCorsAllowedOrigins: stagingCorsAllowedOrigins
     queueName: queueName
     jobStatusTableName: jobStatusTableName
   }
@@ -101,6 +109,7 @@ module compute 'modules/compute.bicep' = {
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     storageAccountName: storage.outputs.storageAccountName
     blobContainerName: storage.outputs.blobContainerName
+    stagingContainerName: storage.outputs.stagingContainerName
     queueName: storage.outputs.queueName
     jobStatusTableName: storage.outputs.jobStatusTableName
     searchEndpoint: aiSearch.outputs.searchEndpoint
@@ -128,7 +137,9 @@ module roleAssignments 'modules/role_assignments.bicep' = {
 output resourceGroupName string = resourceGroup().name
 output storageAccountName string = storage.outputs.storageAccountName
 output blobContainerName string = storage.outputs.blobContainerName
+output stagingContainerName string = storage.outputs.stagingContainerName
 output queueName string = storage.outputs.queueName
+output poisonQueueName string = storage.outputs.poisonQueueName
 output jobStatusTableName string = storage.outputs.jobStatusTableName
 output searchServiceName string = aiSearch.outputs.searchServiceName
 output searchEndpoint string = aiSearch.outputs.searchEndpoint

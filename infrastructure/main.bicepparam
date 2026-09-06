@@ -6,8 +6,16 @@ param location = 'swedencentral'
 param openAiLocation = 'swedencentral'
 
 param blobContainerName = 'pdf-library'
+param stagingContainerName = 'staging'
 param queueName = 'index-jobs'
 param jobStatusTableName = 'jobstatus'
+
+// Frontend origins allowed to PUT/GET directly against the staging container.
+// Static Web App hostname from infrastructure/scripts/.generated.env (STATIC_WEB_APP_HOSTNAME).
+param stagingCorsAllowedOrigins = [
+  'http://localhost:5173'
+  'https://delightful-river-0f09b360f.5.azurestaticapps.net'
+]
 
 // 'free' has no cost but caps you at 3 indexes / 50MB and no semantic ranking.
 // 'basic' is the minimum tier this project is designed against.
