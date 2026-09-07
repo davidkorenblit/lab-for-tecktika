@@ -37,4 +37,11 @@ def read_job_status(job_id: str):
             detail="Job not found",
         )
 
-    return job
+    return {
+        "job_id": job.get("RowKey", job_id),
+        "status": job.get("status"),
+        "document_id": job.get("document_id"),
+        "blob_name": job.get("blob_name"),
+        "etag": job.get("etag"),
+        "error_message": job.get("error_message"),
+    }

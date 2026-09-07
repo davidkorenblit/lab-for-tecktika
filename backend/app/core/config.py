@@ -8,9 +8,9 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = "http://localhost:5173"
 
     # Azure AI Search
-    azure_search_endpoint: str = ""
-    azure_search_index_name: str = ""
-    azure_search_semantic_configuration_name: str = ""
+    azure_search_endpoint: str = "https://srch-ragpoc-dev-qelri355piqlq.search.windows.net"
+    azure_search_index_name: str = "pdf-chunks-index"
+    azure_search_semantic_configuration_name: str = "pdf-chunks-semantic-config"
 
     # Azure AI Search schema fields
     aas_field_chunk_id: str = "chunkId"
@@ -22,23 +22,39 @@ class Settings(BaseSettings):
     aas_field_vector: str = "text_vector"
 
     # Azure OpenAI
-    azure_openai_endpoint: str = ""
-    azure_openai_api_version: str = ""
-    openai_chat_deployment: str = ""
-    openai_embedding_deployment: str = ""
+    azure_openai_endpoint: str = "https://aoai-ragpoc-dev-qelri355piqlq.openai.azure.com/"
+    azure_openai_api_version: str = "2024-10-21"
+    openai_chat_deployment: str = "gpt-4o"
+    openai_embedding_deployment: str = "text-embedding-3-small"
 
     # Azure Storage
-    azure_storage_account_name: str = ""
+    azure_storage_account_name: str = "stragpocdevqelri355piqlq"
 
-    # Blob Storage
-    blob_container_name: str = ""
-    staging_container_name: str = ""
+    # Blob Storage (aligned with infra handoff & worker)
+    blob_container_name: str = "pdf-library"
+    staging_container_name: str = "staging"
 
     # Queue Storage
-    storage_queue_name: str = ""
+    storage_queue_name: str = "index-jobs"
 
     # Table Storage
-    job_status_table_name: str = ""
+    job_status_table_name: str = "jobstatus"
+
+    @property
+    def azure_blob_container_documents(self) -> str:
+        return self.blob_container_name
+
+    @property
+    def azure_blob_container_staging(self) -> str:
+        return self.staging_container_name
+
+    @property
+    def azure_queue_name(self) -> str:
+        return self.storage_queue_name
+
+    @property
+    def azure_table_name(self) -> str:
+        return self.job_status_table_name
 
     # Job statuses
     job_status_queued: str = "QUEUED"
@@ -46,8 +62,10 @@ class Settings(BaseSettings):
     job_status_succeeded: str = "SUCCEEDED"
     job_status_failed: str = "FAILED"
 
-    # App authorization
+    # App authorization & Entra ID
     auth_default_role: str = ""
+    azure_tenant_id: str = "6fc8a795-8bcb-4e52-8b36-41c1971e6816"
+    azure_client_id_api: str = "7267f8e7-50eb-4247-88b7-da2cc3adf6f6"
 
     model_config = SettingsConfigDict(
         env_file=".env",

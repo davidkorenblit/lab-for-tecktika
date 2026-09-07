@@ -17,13 +17,21 @@ param stagingCorsAllowedOrigins = [
   'https://delightful-river-0f09b360f.5.azurestaticapps.net'
 ]
 
+// Same origins, for the backend's own CORS policy (browser calls to the API directly).
+param backendCorsAllowedOrigins = [
+  'http://localhost:5173'
+  'https://delightful-river-0f09b360f.5.azurestaticapps.net'
+]
+
 // 'free' has no cost but caps you at 3 indexes / 50MB and no semantic ranking.
 // 'basic' is the minimum tier this project is designed against.
 param searchSkuName = 'basic'
 
-// Placeholder until the backend CI/CD pipeline (ci-backend.yml) pushes a real image
-// and updates the Container App's revision.
-param backendContainerImage = 'mcr.microsoft.com/k8se/quickstart:latest'
+// ci-backend.yml pushes both `:<sha>` and `:latest` to this public GHCR package on
+// every merge to main. Pinned to `:latest` here (rather than left as the quickstart
+// placeholder) so an infra-only redeploy converges the Container App back onto the
+// real image instead of reverting it to the placeholder.
+param backendContainerImage = 'ghcr.io/davidkorenblit/lab-for-tecktika-backend:latest'
 
 // From register-entra-app.sh (Entra ID App Registration for user sign-in).
 param entraTenantId = '6fc8a795-8bcb-4e52-8b36-41c1971e6816'

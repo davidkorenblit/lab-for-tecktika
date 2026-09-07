@@ -47,6 +47,9 @@ param embeddingDeploymentName string
 @description('Placeholder container image for the backend Container App. CI/CD replaces this with the built image after the first deploy.')
 param backendContainerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 
+@description('Origins allowed to call the backend API cross-origin (the frontend\'s own hostname). Empty disables CORS on the backend.')
+param backendCorsAllowedOrigins array = []
+
 @description('Entra ID tenant ID used for backend token validation.')
 param entraTenantId string = ''
 
@@ -115,6 +118,7 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'OPENAI_EMBEDDING_DEPLOYMENT', value: embeddingDeploymentName }
             { name: 'AZURE_TENANT_ID', value: entraTenantId }
             { name: 'AZURE_CLIENT_ID_API', value: entraApiClientId }
+            { name: 'CORS_ALLOWED_ORIGINS', value: join(backendCorsAllowedOrigins, ',') }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', secretRef: 'appinsights-connection-string' }
           ]
         }

@@ -33,6 +33,9 @@ param stagingContainerName string = 'staging'
 @description('Origins allowed to PUT/GET directly against the staging container (frontend upload flow). Empty disables CORS.')
 param stagingCorsAllowedOrigins array = []
 
+@description('Origins allowed to call the backend API cross-origin (the frontend\'s own hostname). Empty disables CORS on the backend.')
+param backendCorsAllowedOrigins array = []
+
 @description('Name of the queue that receives ingestion/deletion jobs for the Worker to consume.')
 param queueName string = 'index-jobs'
 
@@ -117,6 +120,7 @@ module compute 'modules/compute.bicep' = {
     chatDeploymentName: openAi.outputs.chatDeploymentName
     embeddingDeploymentName: openAi.outputs.embeddingDeploymentName
     backendContainerImage: backendContainerImage
+    backendCorsAllowedOrigins: backendCorsAllowedOrigins
     entraTenantId: entraTenantId
     entraApiClientId: entraApiClientId
   }
