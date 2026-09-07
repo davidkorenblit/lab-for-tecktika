@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.api.v1.endpoints.files import confirmation_store
 from app.main import app
+from app.schemas.confirmation import PendingConfirmation
 from app.schemas.jobs import JobEntity, JobOperation
 
 
@@ -11,14 +11,13 @@ client = TestClient(app)
 
 
 def test_confirm_action_is_idempotent() -> None:
-    confirmation_store._items.clear()
-
-    pending = confirmation_store.create(
+    pending = PendingConfirmation(
+        confirmationId="cf_123",
         action=JobOperation.DELETE,
-        file_name="Q3-report.pdf",
-        blob_name="Q3-report.pdf",
-        document_id="doc_123",
-        requested_by="user_123",
+        fileName="Q3-report.pdf",
+        blobName="Q3-report.pdf",
+        documentId="doc_123",
+        requestedBy="user_123",
     )
 
     job = JobEntity(
@@ -34,10 +33,35 @@ def test_confirm_action_is_idempotent() -> None:
         "files": ["Q3-report.pdf"],
     }
 
-    with patch(
-        "app.api.v1.endpoints.files.create_job_and_enqueue",
-        return_value=job,
-    ) as create_job:
+    def get_confirmation(
+        confirmation_id: str,
+    ) -> PendingConfirmation | None:
+        assert confirmation_id == "cf_123"
+        return pending
+
+    def mark_completed(
+        confirmation_id: str,
+        job_id: str,
+    ) -> PendingConfirmation:
+        assert confirmation_id == "cf_123"
+        pending.completed = True
+        pending.job_id = job_id
+        return pending
+
+    with (
+        patch(
+            "app.api.v1.endpoints.files.confirmation_store.get",
+            side_effect=get_confirmation,
+        ),
+        patch(
+            "app.api.v1.endpoints.files.confirmation_store.mark_completed",
+            side_effect=mark_completed,
+        ),
+        patch(
+            "app.api.v1.endpoints.files.create_job_and_enqueue",
+            return_value=job,
+        ) as create_job,
+    ):
         first = client.post(
             "/api/files/confirm-action",
             json=payload,
