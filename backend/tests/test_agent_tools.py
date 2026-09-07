@@ -204,3 +204,129 @@ def test_parse_tool_arguments_rejects_non_object_json() -> None:
             tool,
             '["contract.pdf"]',
         )
+
+
+def test_run_agent_executes_search_tool_and_returns_final_answer() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock, patch
+
+    from app.agent.runner import run_agent
+
+    tool_call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(
+            name="search_documents",
+            arguments='{"query":"What is the rent?"}',
+        ),
+    )
+
+    first_response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=None,
+                    tool_calls=[tool_call],
+                )
+            )
+        ]
+    )
+
+    second_response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content="The monthly rent is 5,000.",
+                    tool_calls=None,
+                )
+            )
+        ]
+    )
+
+    search_tool = MagicMock()
+    search_tool.name = "search_documents"
+    search_tool.execute.return_value = [
+        {
+            "chunk_id": "chunk_1",
+            "file_name": "contract.pdf",
+            "content": "Monthly rent: 5,000.",
+            "page": 2,
+            "source_url": None,
+            "score": 10.0,
+        }
+    ]
+
+    with (
+        patch(
+            "app.agent.runner.create_chat_completion",
+            side_effect=[first_response, second_response],
+        ),
+        patch(
+            "app.agent.runner.get_tool_by_name",
+            return_value=search_tool,
+        ),
+        patch(
+            "app.agent.runner.parse_tool_arguments",
+            return_value=MagicMock(),
+        ),
+    ):
+        result = run_agent("What is the rent?")
+
+    assert result == "The monthly rent is 5,000."
+    search_tool.execute.assert_called_once()
+
+def test_stream_agent_executes_search_tool_and_streams_final_answer() -> None:
+    from unittest.mock import MagicMock, patch
+
+    from app.agent.runner import stream_agent
+
+    first_response = MagicMock()
+    tool_call = MagicMock()
+    tool_call.id = "call_1"
+    tool_call.function.name = "search_documents"
+    tool_call.function.arguments = '{"query":"rent"}'
+
+    first_response.choices[0].message.tool_calls = [tool_call]
+
+    search_tool = MagicMock()
+    search_tool.name = "search_documents"
+    search_tool.execute.return_value = [
+        {
+            "file_name": "contract.pdf",
+            "content": "The monthly rent is 5,000.",
+        }
+    ]
+
+    with (
+        patch(
+            "app.agent.runner.create_chat_completion",
+            return_value=first_response,
+        ),
+        patch(
+            "app.agent.runner.stream_chat_completion",
+            return_value=iter(
+                [
+                    "The monthly ",
+                    "rent is 5,000.",
+                ]
+            ),
+        ) as mock_stream,
+        patch(
+            "app.agent.runner.get_tool_by_name",
+            return_value=search_tool,
+        ),
+        patch(
+            "app.agent.runner.parse_tool_arguments",
+            return_value=MagicMock(),
+        ),
+    ):
+        chunks = list(
+            stream_agent("What is the rent?")
+        )
+
+    assert chunks == [
+        "The monthly ",
+        "rent is 5,000.",
+    ]
+
+    search_tool.execute.assert_called_once()
+    mock_stream.assert_called_once()
