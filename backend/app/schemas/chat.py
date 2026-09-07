@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.confirmation import ConfirmationEvent
+
 
 class MessageAttachment(BaseModel):
     model_config = ConfigDict(
@@ -55,6 +57,9 @@ class ChatHistoryMessage(BaseModel):
     role: str = Field(min_length=1)
     content: str
     citations: list[Citation] = Field(default_factory=list)
+    attachments: list[MessageAttachment] = Field(default_factory=list)
+    confirmation: ConfirmationEvent | None = None
+    job_ids: list[str] = Field(default_factory=list, alias="jobIds")
 
 
 class ChatHistoryResponse(BaseModel):

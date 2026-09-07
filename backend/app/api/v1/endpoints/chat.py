@@ -7,7 +7,8 @@ from fastapi.responses import StreamingResponse
 
 from app.agent.events import AgentEvent
 from app.agent.runner import run_agent, stream_agent
-from app.schemas.chat import ChatMessageRequest
+from app.schemas.chat import ChatMessageRequest, Citation
+from app.schemas.confirmation import ConfirmationEvent
 from app.services.conversation_service import InMemoryConversationStore
 
 
@@ -27,6 +28,9 @@ def _sse_response(
     yield f"event: start\ndata: {start_data}\n\n"
 
     assistant_chunks: list[str] = []
+    citations: list[Citation] = []
+    confirmation: ConfirmationEvent | None = None
+    job_ids: list[str] = []
 
     try:
         for event in events:
@@ -50,6 +54,7 @@ def _sse_response(
                         "Citations event is missing its payload"
                     )
 
+                citations.extend(event.citations)
                 citations_data = json.dumps(
                     [
                         citation.model_dump(
@@ -73,6 +78,7 @@ def _sse_response(
                         "Confirmation event is missing its payload"
                     )
 
+                confirmation = event.confirmation
                 confirmation_data = json.dumps(
                     event.confirmation.model_dump(
                         by_alias=True,
@@ -92,6 +98,7 @@ def _sse_response(
                         "Job event is missing its payload"
                     )
 
+                job_ids.append(event.job.job_id)
                 job_data = json.dumps(
                     event.job.model_dump(
                         by_alias=True,
@@ -125,11 +132,14 @@ def _sse_response(
 
     assistant_message = "".join(assistant_chunks)
 
-    if assistant_message:
+    if assistant_message or citations or confirmation or job_ids:
         conversation_store.add_message(
             conversation_id=conversation_id,
             role="assistant",
             content=assistant_message,
+            citations=citations,
+            confirmation=confirmation,
+            job_ids=job_ids,
         )
 
     yield "data: [DONE]\n\n"
@@ -141,11 +151,13 @@ def send_message(request: ChatMessageRequest):
         request.conversation_id
         or f"conv_{uuid4().hex}"
     )
+    history = conversation_store.get_messages(conversation_id)
 
     conversation_store.add_message(
         conversation_id=conversation_id,
         role="user",
         content=request.message,
+        attachments=request.attachments,
     )
 
     source_blob_path: str | None = None
@@ -161,13 +173,14 @@ def send_message(request: ChatMessageRequest):
                     request.message,
                     requested_by=conversation_id,
                     source_blob_path=source_blob_path,
+                    history=history,
                 ),
             ),
             media_type="text/event-stream",
         )
 
     try:
-        answer = run_agent(request.message)
+        answer = run_agent(request.message, history=history)
 
         conversation_store.add_message(
             conversation_id=conversation_id,

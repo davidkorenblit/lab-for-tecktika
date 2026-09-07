@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.agent.runner import stream_agent
+from app.schemas.chat import ChatHistoryMessage
 from app.services.file_resolver import ResolvedDocument
 
 
@@ -153,3 +154,47 @@ def test_replace_tool_uses_trusted_staged_attachment() -> None:
     assert call["document_id"] == "doc_123"
     assert call["requested_by"] == "conv_123"
     assert call["source_blob_path"] == "staging/f_1.pdf"
+
+
+def test_stream_agent_sends_previous_turns_to_model() -> None:
+    assistant_message = SimpleNamespace(
+        content="It is 30 days.",
+        tool_calls=[],
+    )
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=assistant_message)]
+    )
+    history = [
+        ChatHistoryMessage(
+            id="msg_1", role="user", content="Read contract.pdf"
+        ),
+        ChatHistoryMessage(
+            id="msg_2",
+            role="assistant",
+            content="It is the vendor agreement.",
+        ),
+    ]
+
+    with patch(
+        "app.agent.runner.create_chat_completion",
+        return_value=response,
+    ) as create_completion:
+        events = list(
+            stream_agent(
+                "What is its notice period?",
+                requested_by="conv_123",
+                history=history,
+            )
+        )
+
+    messages = create_completion.call_args.args[0]
+    assert [message["role"] for message in messages] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert messages[1]["content"] == "Read contract.pdf"
+    assert messages[2]["content"] == "It is the vendor agreement."
+    assert messages[3]["content"] == "What is its notice period?"
+    assert events[0].delta == "It is 30 days."

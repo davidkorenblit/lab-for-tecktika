@@ -2,6 +2,7 @@ import json
 from uuid import uuid4
 from collections.abc import Iterator
 
+from openai.types.chat import ChatCompletionMessage, ChatCompletionMessageParam
 from pydantic import BaseModel
 
 from app.agent.events import AgentEvent, JobEvent
@@ -13,7 +14,7 @@ from app.agent.tools.document_tools import (
     ReplaceDocumentTool,
 )
 from app.agent.tools.search_tool import SearchDocumentsTool
-from app.schemas.chat import Citation
+from app.schemas.chat import ChatHistoryMessage, Citation
 from app.schemas.confirmation import ConfirmationEvent
 from app.schemas.jobs import JobOperation
 from app.services.azure_openai import (
@@ -31,6 +32,40 @@ TOOLS: tuple[BaseTool[BaseModel], ...] = (
     ReplaceDocumentTool(),
     DeleteDocumentTool(),
 )
+
+MAX_HISTORY_MESSAGES = 20
+MAX_HISTORY_CHARACTERS = 24_000
+AgentMessage = ChatCompletionMessageParam | ChatCompletionMessage
+
+
+def _build_messages(
+    user_message: str,
+    history: list[ChatHistoryMessage] | None = None,
+) -> list[AgentMessage]:
+    messages: list[AgentMessage] = [
+        {"role": "system", "content": SYSTEM_PROMPT}
+    ]
+    selected: list[ChatHistoryMessage] = []
+    remaining_characters = MAX_HISTORY_CHARACTERS
+
+    for message in reversed((history or [])[-MAX_HISTORY_MESSAGES:]):
+        # History provides conversational context only. Tool arguments still go
+        # through typed validation and destructive tools still require a fresh,
+        # deterministic Blob Storage resolution and explicit confirmation.
+        if message.role not in {"user", "assistant"}:
+            continue
+        if len(message.content) > remaining_characters:
+            break
+        selected.append(message)
+        remaining_characters -= len(message.content)
+
+    for message in reversed(selected):
+        messages.append(
+            {"role": message.role, "content": message.content}
+        )
+
+    messages.append({"role": "user", "content": user_message})
+    return messages
 
 
 def parse_tool_arguments(
@@ -121,17 +156,12 @@ def _prepare_confirmation(
     )
 
 
-def run_agent(user_message: str) -> str:
-    messages = [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT,
-        },
-        {
-            "role": "user",
-            "content": user_message,
-        },
-    ]
+def run_agent(
+    user_message: str,
+    *,
+    history: list[ChatHistoryMessage] | None = None,
+) -> str:
+    messages = _build_messages(user_message, history)
 
     openai_tools = [to_openai_tool(tool) for tool in TOOLS]
 
@@ -184,17 +214,9 @@ def stream_agent(
     *,
     requested_by: str,
     source_blob_path: str | None = None,
+    history: list[ChatHistoryMessage] | None = None,
 ) -> Iterator[AgentEvent]:
-    messages = [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT,
-        },
-        {
-            "role": "user",
-            "content": user_message,
-        },
-    ]
+    messages = _build_messages(user_message, history)
 
     openai_tools = [to_openai_tool(tool) for tool in TOOLS]
 
