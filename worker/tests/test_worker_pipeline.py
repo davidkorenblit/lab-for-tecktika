@@ -83,9 +83,36 @@ def test_dispatcher_staging_copy_flow(MockJobService, MockBlobService, MockSearc
     )
     dispatcher.dispatch(event)
 
-    dispatcher.blob_service.copy_from_staging.assert_called_once_with("staging/upload-123.pdf", "target.pdf")
+    dispatcher.blob_service.copy_from_staging.assert_called_once_with(
+        source_blob_path="staging/upload-123.pdf",
+        target_blob_name="target.pdf",
+        document_id="doc-staging"
+    )
     dispatcher.search_service.wait_for_indexer.assert_called_once()
     dispatcher.job_service.mark_succeeded.assert_called_once_with("job-staging", "doc-staging", "target.pdf")
+
+
+@patch("services.dispatcher.SearchService")
+@patch("services.dispatcher.BlobService")
+@patch("services.dispatcher.JobService")
+def test_dispatcher_terminal_job_idempotency_skip(MockJobService, MockBlobService, MockSearchService):
+    """Verifies that a duplicate event for a SUCCEEDED job is skipped completely."""
+    from models.job_entity import JobStatus
+    dispatcher = EventDispatcher()
+    dispatcher.job_service.get_job_status.return_value = JobStatus.SUCCEEDED
+
+    event = QueueMessage(
+        job_id="job-already-done",
+        event_type=EventType.CREATE,
+        blob_name="target.pdf",
+        document_id="doc-staging",
+        source_blob_path="staging/upload-123.pdf"
+    )
+    dispatcher.dispatch(event)
+
+    dispatcher.job_service.mark_running.assert_not_called()
+    dispatcher.blob_service.copy_from_staging.assert_not_called()
+    dispatcher.search_service.wait_for_indexer.assert_not_called()
 
 
 @patch("services.dispatcher.SearchService")

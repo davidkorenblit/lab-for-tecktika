@@ -44,7 +44,17 @@ class JobService:
         except Exception as err:
             logging.error(f"Failed to update Table Storage for Job ID {job_id}: {err}")
 
-    # --- Explicit Helper Methods ---
+    def get_job_status(self, job_id: str) -> Optional[JobStatus]:
+        """
+        Fetches current status of a job from Table Storage for idempotency check.
+        """
+        try:
+            client = self._get_client()
+            entity = client.get_entity(partition_key="ingestion-jobs", row_key=job_id)
+            status_val = entity.get("status")
+            return JobStatus(status_val) if status_val else None
+        except Exception:
+            return None
 
     def mark_running(self, job_id: str, document_id: str, blob_name: str) -> None:
         self.mark_status(job_id, document_id, blob_name, JobStatus.RUNNING)

@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
@@ -49,24 +50,59 @@ class BlobService:
 
         return True
 
-    def copy_from_staging(self, source_blob_path: str, target_blob_name: str) -> bool:
+    def copy_from_staging(
+        self,
+        source_blob_path: str,
+        target_blob_name: str,
+        document_id: Optional[str] = None,
+        max_wait_seconds: int = 60,
+    ) -> bool:
         """
-        Copies a blob from staging container to the primary documents container.
+        Copies a blob from staging container to the primary documents container,
+        sets document_id metadata, and awaits copy completion.
         """
         try:
             client = self._get_client()
-            source_container = getattr(settings, "STAGING_CONTAINER_NAME", "staging")
+            staging_container = getattr(settings, "STAGING_CONTAINER_NAME", "staging")
+            source_container = staging_container
             source_blob_name = source_blob_path
-            if "/" in source_blob_path:
-                parts = source_blob_path.split("/", 1)
-                source_container, source_blob_name = parts[0], parts[1]
+
+            # Strip leading container prefix if present (e.g., 'staging/<fileId>/<name>')
+            if source_blob_path.startswith(f"{staging_container}/"):
+                source_blob_name = source_blob_path[len(staging_container) + 1 :]
+            elif source_blob_path.startswith("staging/"):
+                source_blob_name = source_blob_path[len("staging/") :]
 
             source_blob_client = client.get_blob_client(container=source_container, blob=source_blob_name)
             target_blob_client = client.get_blob_client(container=self.container_name, blob=target_blob_name)
 
-            copy_props = target_blob_client.start_copy_from_url(source_blob_client.url)
-            logging.info(f"Successfully initiated copy of '{source_blob_path}' to '{self.container_name}/{target_blob_name}'")
-            return True
+            metadata = {"document_id": document_id} if document_id else None
+            target_blob_client.start_copy_from_url(source_blob_client.url, metadata=metadata)
+            logging.info(f"Initiated copy of '{source_blob_path}' to '{self.container_name}/{target_blob_name}'")
+
+            # Await copy status completion
+            start_time = time.time()
+            while time.time() - start_time < max_wait_seconds:
+                props = target_blob_client.get_blob_properties()
+                copy_status = getattr(getattr(props, "copy", None), "status", None)
+                if copy_status == "success":
+                    logging.info(f"Successfully finished copy of '{target_blob_name}' with status 'success'")
+                    if document_id:
+                        target_blob_client.set_blob_metadata(metadata={"document_id": document_id})
+                    return True
+                elif copy_status in ("failed", "aborted"):
+                    raise RuntimeError(f"Blob copy failed with status: {copy_status}")
+                elif copy_status is None:
+                    # In mock environments or immediate synchronous copy
+                    if document_id:
+                        try:
+                            target_blob_client.set_blob_metadata(metadata={"document_id": document_id})
+                        except Exception:
+                            pass
+                    return True
+                time.sleep(0.5)
+
+            raise TimeoutError(f"Blob copy timed out after {max_wait_seconds} seconds")
         except Exception as err:
             logging.error(f"Failed to copy '{source_blob_path}' to '{target_blob_name}': {err}")
             raise err
