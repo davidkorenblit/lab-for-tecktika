@@ -40,6 +40,7 @@ class Settings(BaseSettings):
 
     # Table Storage
     job_status_table_name: str = "jobstatus"
+    conversation_history_table_name: str | None = None
 
     @property
     def azure_blob_container_documents(self) -> str:

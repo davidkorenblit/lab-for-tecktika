@@ -13,7 +13,6 @@ client = TestClient(app)
 def test_chat_message_calls_agent() -> None:
     from app.api.v1.endpoints.chat import conversation_store
 
-    conversation_store.clear()
     payload = {
         "message": "What is the rent?",
         "conversationId": "conv_123",
@@ -109,8 +108,6 @@ def test_chat_stream_creates_conversation_id_when_missing() -> None:
 def test_chat_message_saves_conversation_history() -> None:
     from app.api.v1.endpoints.chat import conversation_store
 
-    conversation_store.clear()
-
     payload = {
         "message": "What is the rent?",
         "conversationId": "conv_history_123",
@@ -142,8 +139,6 @@ def test_chat_message_saves_conversation_history() -> None:
 
 def test_chat_stream_saves_complete_assistant_message() -> None:
     from app.api.v1.endpoints.chat import conversation_store
-
-    conversation_store.clear()
 
     payload = {
         "message": "What is the rent?",
@@ -182,8 +177,6 @@ def test_chat_stream_saves_complete_assistant_message() -> None:
 
 def test_get_chat_history_returns_saved_messages() -> None:
     from app.api.v1.endpoints.chat import conversation_store
-
-    conversation_store.clear()
 
     conversation_store.add_message(
         conversation_id="conv_history_get_123",
@@ -273,7 +266,6 @@ def test_chat_stream_emits_confirmation_event() -> None:
 def test_previous_turns_are_passed_to_stream_agent() -> None:
     from app.api.v1.endpoints.chat import conversation_store
 
-    conversation_store.clear()
     conversation_store.add_message(
         conversation_id="conv_context_123",
         requested_by="local-dev",
@@ -314,7 +306,6 @@ def test_stream_history_preserves_message_metadata() -> None:
     from app.schemas.chat import Citation
     from app.schemas.confirmation import ConfirmationEvent
 
-    conversation_store.clear()
     attachment = {
         "fileId": "f_1",
         "fileName": "contract.pdf",
@@ -384,7 +375,6 @@ def test_chat_history_rejects_unauthenticated_request() -> None:
 def test_chat_history_rejects_another_user() -> None:
     from app.api.v1.endpoints.chat import conversation_store
 
-    conversation_store.clear()
     conversation_store.add_message(
         conversation_id="conv_private",
         requested_by="another-user",

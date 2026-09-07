@@ -10,12 +10,12 @@ from app.agent.runner import run_agent, stream_agent
 from app.core.security import AuthenticatedUser, get_current_user
 from app.schemas.chat import ChatMessageRequest, Citation
 from app.schemas.confirmation import ConfirmationEvent
-from app.services.conversation_service import InMemoryConversationStore
+from app.services.conversation_service import TableConversationStore
 
 
 router = APIRouter()
 
-conversation_store = InMemoryConversationStore()
+conversation_store = TableConversationStore()
 
 
 def _sse_response(
