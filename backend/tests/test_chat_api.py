@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
+from app.agent.events import AgentEvent
 client = TestClient(app)
 
 
@@ -48,8 +49,8 @@ def test_chat_message_streams_sse_response() -> None:
         "app.api.v1.endpoints.chat.stream_agent",
         return_value=iter(
             [
-                "The monthly ",
-                "rent is 5,000.",
+                AgentEvent(type="delta", delta="The monthly "),
+                AgentEvent(type="delta", delta="rent is 5,000."),
             ]
         ),
     ):
@@ -151,8 +152,8 @@ def test_chat_stream_saves_complete_assistant_message() -> None:
         "app.api.v1.endpoints.chat.stream_agent",
         return_value=iter(
             [
-                "The monthly ",
-                "rent is 5,000.",
+                AgentEvent(type="delta", delta="The monthly "),
+                AgentEvent(type="delta", delta="rent is 5,000."),
             ]
         ),
     ):
@@ -214,3 +215,50 @@ def test_get_chat_history_returns_saved_messages() -> None:
         data["messages"][1]["content"]
         == "The monthly rent is 5,000."
     )
+
+
+def test_chat_stream_emits_confirmation_event() -> None:
+    from app.schemas.confirmation import ConfirmationEvent
+
+    confirmation = ConfirmationEvent(
+        confirmationId="cf_test_123",
+        action="delete",
+        summary="Delete 'Q3-report.pdf'?",
+        files=["Q3-report.pdf"],
+        destructive=True,
+    )
+
+    payload = {
+        "message": "Delete Q3-report.pdf",
+        "conversationId": "conv_delete_123",
+        "stream": True,
+        "attachments": [],
+    }
+
+    with patch(
+        "app.api.v1.endpoints.chat.stream_agent",
+        return_value=iter(
+            [
+                AgentEvent(
+                    type="confirmation",
+                    confirmation=confirmation,
+                )
+            ]
+        ),
+    ):
+        response = client.post(
+            "/api/chat/message",
+            json=payload,
+            headers={"Accept": "text/event-stream"},
+        )
+
+    assert response.status_code == 200
+
+    body = response.text
+
+    assert "event: confirmation" in body
+    assert '"confirmationId":"cf_test_123"' in body
+    assert '"action":"delete"' in body
+    assert '"files":["Q3-report.pdf"]' in body
+    assert '"destructive":true' in body
+    assert "data: [DONE]" in body

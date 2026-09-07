@@ -3,6 +3,7 @@ from collections.abc import Iterator
 
 from pydantic import BaseModel
 
+from app.agent.events import AgentEvent
 from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.tools.base import BaseTool, to_openai_tool
 from app.agent.tools.document_tools import (
@@ -11,10 +12,14 @@ from app.agent.tools.document_tools import (
     ReplaceDocumentTool,
 )
 from app.agent.tools.search_tool import SearchDocumentsTool
+from app.schemas.confirmation import ConfirmationEvent
+from app.schemas.jobs import JobOperation
 from app.services.azure_openai import (
     create_chat_completion,
     stream_chat_completion,
 )
+from app.services.confirmation_service import confirmation_store
+from app.services.file_resolver import resolve_document
 
 
 TOOLS: tuple[BaseTool[BaseModel], ...] = (
@@ -46,6 +51,71 @@ def get_tool_by_name(name: str) -> BaseTool[BaseModel]:
             return tool
 
     raise ValueError(f"Unknown tool: {name}")
+
+
+def _prepare_confirmation(
+    *,
+    tool_name: str,
+    arguments: BaseModel,
+    requested_by: str,
+    source_blob_path: str | None = None,
+) -> ConfirmationEvent:
+    file_name = getattr(arguments, "file_name", None)
+
+    if not isinstance(file_name, str) or not file_name.strip():
+        raise ValueError("A valid file name is required")
+
+    matches = resolve_document(file_name)
+
+    if not matches:
+        raise ValueError(
+            f"Document '{file_name}' was not found"
+        )
+
+    if len(matches) > 1:
+        raise ValueError(
+            f"Document name '{file_name}' is ambiguous"
+        )
+
+    resolved = matches[0]
+
+    if tool_name == "delete_document":
+        operation = JobOperation.DELETE
+        summary = f"Delete '{resolved.file_name}'?"
+        staged_path = None
+
+    elif tool_name == "replace_document":
+        if not source_blob_path:
+            raise ValueError(
+                "A staged attachment is required to replace a document"
+            )
+
+        operation = JobOperation.REPLACE
+        summary = f"Replace '{resolved.file_name}'?"
+        staged_path = source_blob_path
+
+    else:
+        raise ValueError(
+            f"Tool '{tool_name}' does not use confirmation"
+        )
+
+    pending = confirmation_store.create(
+        action=operation,
+        file_name=resolved.file_name,
+        blob_name=resolved.blob_name,
+        document_id=resolved.document_id,
+        requested_by=requested_by,
+        source_blob_path=staged_path,
+        etag=resolved.etag,
+    )
+
+    return ConfirmationEvent(
+        confirmationId=pending.confirmation_id,
+        action=operation.value.lower(),
+        summary=summary,
+        files=[resolved.file_name],
+        destructive=True,
+    )
 
 
 def run_agent(user_message: str) -> str:
@@ -80,7 +150,7 @@ def run_agent(user_message: str) -> str:
 
         if tool.name != "search_documents":
             raise ValueError(
-                f"Tool '{tool.name}' requires application-managed confirmation"
+                f"Tool '{tool.name}' requires streaming application-managed handling"
             )
 
         arguments = parse_tool_arguments(
@@ -106,7 +176,12 @@ def run_agent(user_message: str) -> str:
     return final_response.choices[0].message.content or ""
 
 
-def stream_agent(user_message: str) -> Iterator[str]:
+def stream_agent(
+    user_message: str,
+    *,
+    requested_by: str,
+    source_blob_path: str | None = None,
+) -> Iterator[AgentEvent]:
     messages = [
         {
             "role": "system",
@@ -132,7 +207,10 @@ def stream_agent(user_message: str) -> Iterator[str]:
         content = assistant_message.content or ""
 
         if content:
-            yield content
+            yield AgentEvent(
+                type="delta",
+                delta=content,
+            )
 
         return
 
@@ -141,15 +219,32 @@ def stream_agent(user_message: str) -> Iterator[str]:
     for tool_call in tool_calls:
         tool = get_tool_by_name(tool_call.function.name)
 
-        if tool.name != "search_documents":
-            raise ValueError(
-                f"Tool '{tool.name}' requires application-managed confirmation"
-            )
-
         arguments = parse_tool_arguments(
             tool,
             tool_call.function.arguments,
         )
+
+        if tool.name in {
+            "delete_document",
+            "replace_document",
+        }:
+            confirmation = _prepare_confirmation(
+                tool_name=tool.name,
+                arguments=arguments,
+                requested_by=requested_by,
+                source_blob_path=source_blob_path,
+            )
+
+            yield AgentEvent(
+                type="confirmation",
+                confirmation=confirmation,
+            )
+            return
+
+        if tool.name == "add_document":
+            raise ValueError(
+                "Add document handling is not connected yet"
+            )
 
         result = tool.execute(arguments)
 
@@ -161,7 +256,11 @@ def stream_agent(user_message: str) -> Iterator[str]:
             }
         )
 
-    yield from stream_chat_completion(
+    for chunk in stream_chat_completion(
         messages,
         tools=openai_tools,
-    )
+    ):
+        yield AgentEvent(
+            type="delta",
+            delta=chunk,
+        )

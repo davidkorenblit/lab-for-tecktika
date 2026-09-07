@@ -16,29 +16,25 @@ from app.schemas.tools import (
 def test_add_document_tool_validates_arguments() -> None:
     tool = AddDocumentTool()
 
-    result = tool.validate_args(
+    arguments = tool.validate_args(
         {
             "file_name": "contract.pdf",
-            "source_blob_path": "staging/contract.pdf",
         }
     )
 
-    assert isinstance(result, AddDocumentArgs)
-    assert result.file_name == "contract.pdf"
-    assert result.source_blob_path == "staging/contract.pdf"
+    assert arguments.file_name == "contract.pdf"
 
 
 def test_replace_document_tool_validates_arguments() -> None:
     tool = ReplaceDocumentTool()
 
-    result = tool.validate_args(
+    arguments = tool.validate_args(
         {
             "file_name": "contract.pdf",
-            "source_blob_path": "staging/replacement.pdf",
         }
     )
 
-    assert isinstance(result, ReplaceDocumentArgs)
+    assert arguments.file_name == "contract.pdf"
 
 
 def test_delete_document_tool_validates_arguments() -> None:
@@ -53,13 +49,14 @@ def test_delete_document_tool_validates_arguments() -> None:
     assert isinstance(result, DeleteDocumentArgs)
 
 
-def test_add_document_tool_rejects_missing_source_blob_path() -> None:
+def test_add_document_tool_rejects_unknown_source_blob_path() -> None:
     tool = AddDocumentTool()
 
     with pytest.raises(ValidationError):
         tool.validate_args(
             {
                 "file_name": "contract.pdf",
+                "source_blob_path": "staging/untrusted.pdf",
             }
         )
 
@@ -319,11 +316,19 @@ def test_stream_agent_executes_search_tool_and_streams_final_answer() -> None:
             return_value=MagicMock(),
         ),
     ):
-        chunks = list(
-            stream_agent("What is the rent?")
+        events = list(
+            stream_agent(
+                "What is the rent?",
+                requested_by="conv_test",
+            )
         )
 
-    assert chunks == [
+    assert [event.type for event in events] == [
+        "delta",
+        "delta",
+    ]
+
+    assert [event.delta for event in events] == [
         "The monthly ",
         "rent is 5,000.",
     ]

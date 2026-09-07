@@ -7,12 +7,7 @@ class AddDocumentArgs(BaseModel):
     file_name: str = Field(
         ...,
         min_length=1,
-        description="Exact name of the document to add",
-    )
-    source_blob_path: str = Field(
-        ...,
-        min_length=1,
-        description="Path of the staged source blob",
+        description="Exact name of the attached document to add",
     )
 
 
@@ -22,12 +17,7 @@ class ReplaceDocumentArgs(BaseModel):
     file_name: str = Field(
         ...,
         min_length=1,
-        description="Exact name of the document to replace",
-    )
-    source_blob_path: str = Field(
-        ...,
-        min_length=1,
-        description="Path of the staged replacement blob",
+        description="Exact name of the existing document to replace",
     )
 
 

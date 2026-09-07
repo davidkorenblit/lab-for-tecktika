@@ -5,6 +5,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.agent.events import AgentEvent
 from app.agent.runner import run_agent, stream_agent
 from app.schemas.chat import ChatMessageRequest
 from app.services.conversation_service import InMemoryConversationStore
@@ -17,7 +18,7 @@ conversation_store = InMemoryConversationStore()
 
 def _sse_response(
     conversation_id: str,
-    chunks: Iterable[str],
+    events: Iterable[AgentEvent],
 ) -> Iterator[str]:
     start_data = json.dumps(
         {"conversationId": conversation_id},
@@ -27,14 +28,58 @@ def _sse_response(
 
     assistant_chunks: list[str] = []
 
-    for chunk in chunks:
-        assistant_chunks.append(chunk)
+    try:
+        for event in events:
+            if event.type == "delta":
+                chunk = event.delta or ""
 
-        delta_data = json.dumps(
-            {"delta": chunk},
+                if not chunk:
+                    continue
+
+                assistant_chunks.append(chunk)
+
+                delta_data = json.dumps(
+                    {"delta": chunk},
+                    separators=(",", ":"),
+                )
+                yield f"event: delta\ndata: {delta_data}\n\n"
+
+            elif event.type == "confirmation":
+                if event.confirmation is None:
+                    raise ValueError(
+                        "Confirmation event is missing its payload"
+                    )
+
+                confirmation_data = json.dumps(
+                    event.confirmation.model_dump(
+                        by_alias=True,
+                        mode="json",
+                    ),
+                    separators=(",", ":"),
+                )
+
+                yield (
+                    "event: confirmation\n"
+                    f"data: {confirmation_data}\n\n"
+                )
+
+    except ValueError as exc:
+        error_data = json.dumps(
+            {"message": str(exc)},
             separators=(",", ":"),
         )
-        yield f"event: delta\ndata: {delta_data}\n\n"
+        yield f"event: error\ndata: {error_data}\n\n"
+        yield "data: [DONE]\n\n"
+        return
+
+    except Exception:
+        error_data = json.dumps(
+            {"message": "Agent request failed"},
+            separators=(",", ":"),
+        )
+        yield f"event: error\ndata: {error_data}\n\n"
+        yield "data: [DONE]\n\n"
+        return
 
     assistant_message = "".join(assistant_chunks)
 
@@ -46,6 +91,7 @@ def _sse_response(
         )
 
     yield "data: [DONE]\n\n"
+
 
 @router.post("/message")
 def send_message(request: ChatMessageRequest):
@@ -60,11 +106,20 @@ def send_message(request: ChatMessageRequest):
         content=request.message,
     )
 
+    source_blob_path: str | None = None
+
+    if len(request.attachments) == 1:
+        source_blob_path = request.attachments[0].blob_path
+
     if request.stream:
         return StreamingResponse(
             _sse_response(
                 conversation_id,
-                stream_agent(request.message),
+                stream_agent(
+                    request.message,
+                    requested_by=conversation_id,
+                    source_blob_path=source_blob_path,
+                ),
             ),
             media_type="text/event-stream",
         )
@@ -94,6 +149,7 @@ def send_message(request: ChatMessageRequest):
         "conversationId": conversation_id,
         "message": answer,
     }
+
 
 @router.get("/history")
 def get_chat_history(
