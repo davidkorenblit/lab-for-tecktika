@@ -255,6 +255,14 @@ def stream_agent(
             if not isinstance(file_name, str) or not file_name.strip():
                 raise ValueError("A valid file name is required")
 
+            existing_documents = resolve_document(file_name)
+
+            if existing_documents:
+                raise ValueError(
+                    f"Document '{file_name}' already exists. "
+                    "Replacing an existing document requires explicit confirmation."
+                )
+
             job = create_job_and_enqueue(
                 operation=JobOperation.ADD,
                 file_name=file_name,

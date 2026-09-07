@@ -27,6 +27,10 @@ def test_add_document_creates_job_from_trusted_attachment() -> None:
             "app.agent.runner.create_job_and_enqueue",
             return_value=job,
         ) as create_job,
+            patch(
+                "app.agent.runner.resolve_document",
+                return_value=[],
+            ),
     ):
         events = list(
             stream_agent(
@@ -173,3 +177,45 @@ def test_chat_stream_emits_citations_event() -> None:
     assert '"fileName":"contract.pdf"' in response.text
     assert '"page":2' in response.text
     assert '"score":3.75' in response.text
+
+
+def test_add_existing_document_does_not_create_job() -> None:
+    first_response = MagicMock()
+    tool_call = MagicMock()
+    tool_call.id = "call_add_existing"
+    tool_call.function.name = "add_document"
+    tool_call.function.arguments = '{"file_name":"contract.pdf"}'
+    first_response.choices[0].message.tool_calls = [tool_call]
+
+    existing_document = MagicMock()
+
+    with (
+        patch(
+            "app.agent.runner.create_chat_completion",
+            return_value=first_response,
+        ),
+        patch(
+            "app.agent.runner.resolve_document",
+            return_value=[existing_document],
+        ),
+        patch(
+            "app.agent.runner.create_job_and_enqueue",
+        ) as create_job,
+    ):
+        try:
+            list(
+                stream_agent(
+                    "add this contract",
+                    requested_by="conv_123",
+                    source_blob_path="f_1/contract.pdf",
+                )
+            )
+        except ValueError as exc:
+            assert "already exists" in str(exc)
+            assert "explicit confirmation" in str(exc)
+        else:
+            raise AssertionError(
+                "Existing document ADD should have been rejected"
+            )
+
+    create_job.assert_not_called()
