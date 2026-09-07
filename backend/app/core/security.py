@@ -119,12 +119,15 @@ async def get_current_user(
     """
     FastAPI dependency for authenticating incoming requests.
     Supports MSAL Bearer token with full JWKS verification,
-    as well as a safe Local Dev mode when running locally.
+    as well as an explicitly enabled Local Dev mode.
     """
-    is_local = settings.environment.lower() in ("local", "dev", "test")
+    bypass_enabled = (
+        settings.allow_local_auth_bypass
+        and settings.environment.lower() in ("local", "dev", "test")
+    )
 
     if not authorization:
-        if is_local:
+        if bypass_enabled:
             return get_default_dev_user()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -134,8 +137,6 @@ async def get_current_user(
 
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token:
-        if is_local:
-            return get_default_dev_user()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Authorization scheme. Expected Bearer <token>",
@@ -143,14 +144,8 @@ async def get_current_user(
         )
 
     # Local dev token bypass (e.g. VITE_AUTH_DEV_TOKEN)
-    if is_local and token in ("dev-token", "local-dev", "test-token"):
+    if bypass_enabled and token in ("dev-token", "local-dev", "test-token"):
         return get_default_dev_user()
 
-    try:
-        payload = validate_token(token)
-        return extract_user_from_payload(payload)
-    except HTTPException:
-        if is_local:
-            logger.info("Local environment: falling back to dev user after token error")
-            return get_default_dev_user()
-        raise
+    payload = validate_token(token)
+    return extract_user_from_payload(payload)

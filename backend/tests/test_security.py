@@ -47,21 +47,56 @@ def test_extract_user_fallback_sub() -> None:
 
 @pytest.mark.anyio
 async def test_get_current_user_local_no_token() -> None:
-    with patch.object(settings, "environment", "local"):
+    with (
+        patch.object(settings, "environment", "local"),
+        patch.object(settings, "allow_local_auth_bypass", True),
+    ):
         user = await get_current_user(authorization=None)
         assert user.user_id == "local-dev"
 
 
 @pytest.mark.anyio
 async def test_get_current_user_local_dev_token() -> None:
-    with patch.object(settings, "environment", "local"):
+    with (
+        patch.object(settings, "environment", "local"),
+        patch.object(settings, "allow_local_auth_bypass", True),
+    ):
         user = await get_current_user(authorization="Bearer dev-token")
         assert user.user_id == "local-dev"
 
 
 @pytest.mark.anyio
+async def test_get_current_user_local_bypass_disabled() -> None:
+    with (
+        patch.object(settings, "environment", "local"),
+        patch.object(settings, "allow_local_auth_bypass", False),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_current_user(authorization=None)
+        assert exc_info.value.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_get_current_user_local_invalid_token_is_rejected() -> None:
+    with (
+        patch.object(settings, "environment", "local"),
+        patch.object(settings, "allow_local_auth_bypass", True),
+        patch(
+            "app.core.security.validate_token",
+            side_effect=HTTPException(status_code=401, detail="invalid"),
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_current_user(authorization="Bearer invalid-token")
+        assert exc_info.value.status_code == 401
+
+
+@pytest.mark.anyio
 async def test_get_current_user_production_missing_token() -> None:
-    with patch.object(settings, "environment", "production"):
+    with (
+        patch.object(settings, "environment", "production"),
+        patch.object(settings, "allow_local_auth_bypass", True),
+    ):
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user(authorization=None)
         assert exc_info.value.status_code == 401

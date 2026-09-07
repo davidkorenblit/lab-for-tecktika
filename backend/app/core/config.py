@@ -4,7 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # Application
     app_name: str = "Backend Agent API"
-    environment: str = "local"
+    environment: str = "production"
+    allow_local_auth_bypass: bool = False
     cors_allowed_origins: str = "http://localhost:5173"
 
     # Azure AI Search

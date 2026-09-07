@@ -105,6 +105,7 @@ module compute 'modules/compute.bicep' = {
   name: 'compute'
   params: {
     baseName: baseName
+    environmentName: environmentName
     location: location
     staticWebAppLocation: staticWebAppLocation
     tags: tags
