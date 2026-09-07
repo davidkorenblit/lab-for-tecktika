@@ -39,14 +39,16 @@ def test_confirm_action_is_idempotent() -> None:
         assert confirmation_id == "cf_123"
         return pending
 
-    def mark_completed(
+    def claim(
         confirmation_id: str,
         job_id: str,
-    ) -> PendingConfirmation:
+    ) -> tuple[PendingConfirmation, bool]:
         assert confirmation_id == "cf_123"
+        if pending.completed:
+            return pending, False
         pending.completed = True
-        pending.job_id = job_id
-        return pending
+        pending.job_id = "job_7"
+        return pending, True
 
     with (
         patch(
@@ -54,8 +56,8 @@ def test_confirm_action_is_idempotent() -> None:
             side_effect=get_confirmation,
         ),
         patch(
-            "app.api.v1.endpoints.files.confirmation_store.mark_completed",
-            side_effect=mark_completed,
+            "app.api.v1.endpoints.files.confirmation_store.claim",
+            side_effect=claim,
         ),
         patch(
             "app.api.v1.endpoints.files.create_job_and_enqueue",

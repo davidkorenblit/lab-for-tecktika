@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.files import UploadUrlRequest, UploadUrlResponse
@@ -42,6 +44,13 @@ def create_file_upload_url(
 def confirm_action(
     request: ConfirmActionRequest,
 ) -> ConfirmActionResponse:
+    """Validate and atomically claim a destructive action before queueing it.
+
+    The Table ETag claim guarantees a single enqueue winner. There is an
+    unavoidable cross-service failure window after the claim and before the job
+    record/queue write because Azure Table Storage and Queue Storage do not share
+    a transaction. A reconciliation/outbox mechanism would be needed to close it.
+    """
     pending = confirmation_store.get(
         request.confirmation_id
     )
@@ -78,19 +87,35 @@ def confirm_action(
             message="Action already confirmed",
         )
 
-    job = create_job_and_enqueue(
-        operation=pending.action,
-        file_name=pending.file_name,
-        blob_name=pending.blob_name,
-        requested_by=pending.requested_by,
-        document_id=pending.document_id,
-        etag=pending.etag,
-        source_blob_path=pending.source_blob_path,
-    )
+    reserved_job_id = str(uuid4())
 
-    confirmation_store.mark_completed(
-        pending.confirmation_id,
-        job.RowKey,
+    try:
+        claimed, acquired = confirmation_store.claim(
+            pending.confirmation_id,
+            reserved_job_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Confirmation not found",
+        ) from exc
+
+    if not acquired:
+        return ConfirmActionResponse(
+            jobId=claimed.job_id,
+            status="queued",
+            message="Action already confirmed",
+        )
+
+    job = create_job_and_enqueue(
+        operation=claimed.action,
+        file_name=claimed.file_name,
+        blob_name=claimed.blob_name,
+        requested_by=claimed.requested_by,
+        document_id=claimed.document_id,
+        etag=claimed.etag,
+        source_blob_path=claimed.source_blob_path,
+        job_id=claimed.job_id,
     )
 
     return ConfirmActionResponse(

@@ -1,6 +1,9 @@
 @description('Base name used to derive compute resource names.')
 param baseName string
 
+@description('Deployment environment name exposed to the backend runtime.')
+param environmentName string
+
 @description('Azure region for compute resources.')
 param location string = resourceGroup().location
 
@@ -108,6 +111,8 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
             memory: '1Gi'
           }
           env: [
+            { name: 'ENVIRONMENT', value: environmentName }
+            { name: 'ALLOW_LOCAL_AUTH_BYPASS', value: 'false' }
             { name: 'AZURE_STORAGE_ACCOUNT_NAME', value: storageAccountName }
             { name: 'BLOB_CONTAINER_NAME', value: blobContainerName }
             { name: 'STORAGE_QUEUE_NAME', value: queueName }

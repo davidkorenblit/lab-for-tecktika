@@ -28,18 +28,19 @@ def create_job_and_enqueue(
     document_id: str,
     etag: str | None = None,
     source_blob_path: str | None = None,
+    job_id: str | None = None,
 ) -> JobEntity:
-    job_id = str(uuid4())
+    resolved_job_id = job_id or str(uuid4())
 
     job = JobEntity(
-        RowKey=job_id,
+        RowKey=resolved_job_id,
         document_id=document_id,
         blob_name=blob_name,
         etag=etag,
     )
 
     message = QueueMessage(
-        job_id=job_id,
+        job_id=resolved_job_id,
         event_type=map_operation_to_event_type(operation),
         blob_name=blob_name,
         document_id=document_id,

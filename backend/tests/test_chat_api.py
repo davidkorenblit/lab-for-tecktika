@@ -10,6 +10,9 @@ client = TestClient(app)
 
 
 def test_chat_message_calls_agent() -> None:
+    from app.api.v1.endpoints.chat import conversation_store
+
+    conversation_store._messages.clear()
     payload = {
         "message": "What is the rent?",
         "conversationId": "conv_123",
@@ -33,7 +36,7 @@ def test_chat_message_calls_agent() -> None:
     }
 
     mock_run_agent.assert_called_once_with(
-        "What is the rent?"
+        "What is the rent?", history=[]
     )
 
 
@@ -262,3 +265,99 @@ def test_chat_stream_emits_confirmation_event() -> None:
     assert '"files":["Q3-report.pdf"]' in body
     assert '"destructive":true' in body
     assert "data: [DONE]" in body
+
+
+def test_previous_turns_are_passed_to_stream_agent() -> None:
+    from app.api.v1.endpoints.chat import conversation_store
+
+    conversation_store._messages.clear()
+    conversation_store.add_message(
+        conversation_id="conv_context_123",
+        role="user",
+        content="Tell me about contract.pdf",
+    )
+    conversation_store.add_message(
+        conversation_id="conv_context_123",
+        role="assistant",
+        content="It is the vendor agreement.",
+    )
+
+    with patch(
+        "app.api.v1.endpoints.chat.stream_agent",
+        return_value=iter([AgentEvent(type="delta", delta="30 days.")]),
+    ) as mock_stream_agent:
+        response = client.post(
+            "/api/chat/message",
+            json={
+                "message": "What is its notice period?",
+                "conversationId": "conv_context_123",
+                "stream": True,
+            },
+        )
+
+    assert response.status_code == 200
+    history = mock_stream_agent.call_args.kwargs["history"]
+    assert [message.content for message in history] == [
+        "Tell me about contract.pdf",
+        "It is the vendor agreement.",
+    ]
+
+
+def test_stream_history_preserves_message_metadata() -> None:
+    from app.api.v1.endpoints.chat import conversation_store
+    from app.agent.events import JobEvent
+    from app.schemas.chat import Citation
+    from app.schemas.confirmation import ConfirmationEvent
+
+    conversation_store._messages.clear()
+    attachment = {
+        "fileId": "f_1",
+        "fileName": "contract.pdf",
+        "size": 100,
+        "blobPath": "staging/f_1.pdf",
+    }
+    citation = Citation(id="chunk_1", fileName="contract.pdf")
+    confirmation = ConfirmationEvent(
+        confirmationId="cf_1",
+        action="replace",
+        summary="Replace contract.pdf?",
+        files=["contract.pdf"],
+    )
+
+    with patch(
+        "app.api.v1.endpoints.chat.stream_agent",
+        return_value=iter(
+            [
+                AgentEvent(type="citations", citations=[citation]),
+                AgentEvent(type="confirmation", confirmation=confirmation),
+                AgentEvent(
+                    type="job",
+                    job=JobEvent(
+                        jobId="job_1",
+                        status="queued",
+                        fileName="contract.pdf",
+                    ),
+                ),
+            ]
+        ),
+    ):
+        response = client.post(
+            "/api/chat/message",
+            json={
+                "message": "Replace it",
+                "conversationId": "conv_metadata_123",
+                "stream": True,
+                "attachments": [attachment],
+            },
+        )
+
+    assert response.status_code == 200
+    history_response = client.get(
+        "/api/chat/history",
+        params={"conversationId": "conv_metadata_123"},
+    ).json()
+    user_message, assistant_message = history_response["messages"]
+    assert user_message["attachments"] == [attachment]
+    assert assistant_message["citations"][0]["id"] == "chunk_1"
+    assert assistant_message["confirmation"]["confirmationId"] == "cf_1"
+    assert assistant_message["jobIds"] == ["job_1"]

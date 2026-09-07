@@ -77,4 +77,4 @@ def test_upload_document_success():
     assert job_call["file_name"] == "contract.pdf"
     assert job_call["document_id"] == body["document_id"]
     assert job_call["etag"] == '"etag-123"'
-    assert job_call["source_blob_path"] == "staging/contract.pdf"    
+    assert job_call["source_blob_path"] == "staging/contract.pdf"

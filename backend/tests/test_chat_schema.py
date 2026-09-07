@@ -37,6 +37,14 @@ def test_chat_history_response_accepts_frontend_contract() -> None:
                 "id": "msg_1",
                 "role": "user",
                 "content": "What is the rent?",
+                "attachments": [
+                    {
+                        "fileId": "f_1",
+                        "fileName": "contract.pdf",
+                        "size": 100,
+                        "blobPath": "staging/f_1.pdf",
+                    }
+                ],
             },
             {
                 "id": "msg_2",
@@ -50,6 +58,14 @@ def test_chat_history_response_accepts_frontend_contract() -> None:
                         "snippet": "Monthly rent is 5,000.",
                     }
                 ],
+                "confirmation": {
+                    "confirmationId": "cf_1",
+                    "action": "delete",
+                    "summary": "Delete contract.pdf?",
+                    "files": ["contract.pdf"],
+                    "destructive": True,
+                },
+                "jobIds": ["job_1"],
             },
         ],
     }
@@ -59,5 +75,9 @@ def test_chat_history_response_accepts_frontend_contract() -> None:
     assert history.conversation_id == "conv_123"
     assert len(history.messages) == 2
     assert history.messages[0].role == "user"
+    assert history.messages[0].attachments[0].file_id == "f_1"
     assert history.messages[1].role == "assistant"
     assert history.messages[1].citations[0].file_name == "contract.pdf"
+    assert history.messages[1].confirmation is not None
+    assert history.messages[1].confirmation.confirmation_id == "cf_1"
+    assert history.messages[1].job_ids == ["job_1"]
