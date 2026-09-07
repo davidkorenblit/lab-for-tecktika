@@ -47,3 +47,6 @@ class InMemoryConfirmationStore:
         confirmation.completed = True
         confirmation.job_id = job_id
         return confirmation
+
+
+confirmation_store = InMemoryConfirmationStore()

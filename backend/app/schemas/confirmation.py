@@ -36,3 +36,13 @@ class ConfirmActionResponse(BaseModel):
     job_id: str | None = Field(default=None, alias="jobId")
     status: str
     message: str
+
+
+class ConfirmationEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    confirmation_id: str = Field(alias="confirmationId", min_length=1)
+    action: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    files: list[str] = Field(min_length=1)
+    destructive: bool = True

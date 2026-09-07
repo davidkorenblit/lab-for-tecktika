@@ -4,11 +4,10 @@ from app.schemas.confirmation import (
     ConfirmActionRequest,
     ConfirmActionResponse,
 )
-from app.services.confirmation_service import InMemoryConfirmationStore
+from app.services.confirmation_service import confirmation_store
 from app.services.job_manager import create_job_and_enqueue
 
 router = APIRouter()
-confirmation_store = InMemoryConfirmationStore()
 
 
 @router.post(
