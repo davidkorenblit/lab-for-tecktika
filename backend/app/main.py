@@ -16,7 +16,7 @@ app.add_middleware(
         origin.strip()
         for origin in settings.cors_allowed_origins.split(",")
         if origin.strip()
-    ],
+    ] or ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,6 +25,10 @@ app.add_middleware(
 app.include_router(
     api_router,
     prefix="/api/v1",
+)
+app.include_router(
+    api_router,
+    prefix="/api",
 )
 
 app.include_router(

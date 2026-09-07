@@ -30,12 +30,9 @@ class QueueMessage(BaseModel):
     job_id: str = Field(..., description="Unique Job ID for task tracking")
     event_type: EventType = Field(..., description="CREATE, UPDATE, or DELETE")
     blob_name: str = Field(..., description="File name in Blob Storage")
-    document_id: str = Field(..., description="Unique ParentDocumentID")
-    etag: str | None = Field(default=None)
-    source_blob_path: str | None = Field(
-        default=None,
-        description="Optional path of the staged source blob",
-    )
+    document_id: str = Field(..., description="Unique parentDocumentId")
+    etag: str | None = Field(default=None, description="Blob ETag for version check")
+    source_blob_path: str | None = Field(default=None, description="Path to staging blob for copy to documents")
 
 
 class CreateJobRequest(BaseModel):
@@ -61,3 +58,16 @@ class JobEntity(BaseModel):
 
     etag: str | None = Field(default=None)
     error_message: str | None = Field(default=None)
+
+
+class JobStatusResponse(BaseModel):
+    """
+    Standard response model for /jobs/{jobId}/status endpoint.
+    """
+
+    job_id: str
+    document_id: str
+    status: JobStatus
+    blob_name: str
+    etag: str | None = None
+    error_message: str | None = None
