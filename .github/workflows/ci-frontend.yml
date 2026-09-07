@@ -48,6 +48,12 @@ jobs:
           VITE_MSAL_CLIENT_ID: ${{ vars.VITE_MSAL_CLIENT_ID }}
           VITE_MSAL_TENANT_ID: ${{ vars.VITE_MSAL_TENANT_ID }}
           VITE_MSAL_API_SCOPE: ${{ vars.VITE_MSAL_API_SCOPE }}
+          # Same reasoning: the backend's public URL isn't secret. Falls back to
+          # the current live Container App FQDN if no repo variable overrides it,
+          # so the SPA calls the actual backend instead of its own same-origin
+          # /api/* (which Static Web Apps reserves and 404s/405s on with no
+          # linked backend attached).
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://ca-backend-ragpoc-dev-qelri355pi.redrock-32afe15c.swedencentral.azurecontainerapps.io' }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
