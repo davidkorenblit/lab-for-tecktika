@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.main import app
 
 
@@ -18,6 +19,7 @@ def test_get_job_endpoint():
             "document_id": "doc-123",
             "blob_name": "contract.pdf",
             "status": "RUNNING",
+            "requested_by": "local-dev",
         }
 
         response = client.get(
@@ -62,6 +64,7 @@ def test_get_job_status_endpoint():
             "status": "SUCCEEDED",
             "etag": '"etag-abc"',
             "error_message": None,
+            "requested_by": "local-dev",
         }
 
         # Test with /api/v1 prefix
@@ -81,3 +84,27 @@ def test_get_job_status_endpoint():
         )
         assert response_alias.status_code == 200
         assert response_alias.json()["job_id"] == "job-abc"
+
+
+def test_get_job_status_rejects_unauthenticated_request() -> None:
+    with (
+        patch.object(settings, "environment", "production"),
+        patch.object(settings, "allow_local_auth_bypass", False),
+    ):
+        response = client.get("/api/jobs/job-private/status")
+
+    assert response.status_code == 401
+
+
+def test_get_job_status_rejects_non_owner() -> None:
+    with patch(
+        "app.api.v1.endpoints.jobs.get_job",
+        return_value={
+            "RowKey": "job-private",
+            "status": "QUEUED",
+            "requested_by": "another-user",
+        },
+    ):
+        response = client.get("/api/jobs/job-private/status")
+
+    assert response.status_code == 403

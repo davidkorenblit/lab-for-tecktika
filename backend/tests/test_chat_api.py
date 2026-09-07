@@ -3,6 +3,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.config import settings
 
 
 from app.agent.events import AgentEvent
@@ -12,7 +13,7 @@ client = TestClient(app)
 def test_chat_message_calls_agent() -> None:
     from app.api.v1.endpoints.chat import conversation_store
 
-    conversation_store._messages.clear()
+    conversation_store.clear()
     payload = {
         "message": "What is the rent?",
         "conversationId": "conv_123",
@@ -108,7 +109,7 @@ def test_chat_stream_creates_conversation_id_when_missing() -> None:
 def test_chat_message_saves_conversation_history() -> None:
     from app.api.v1.endpoints.chat import conversation_store
 
-    conversation_store._messages.clear()
+    conversation_store.clear()
 
     payload = {
         "message": "What is the rent?",
@@ -129,7 +130,7 @@ def test_chat_message_saves_conversation_history() -> None:
     assert response.status_code == 200
 
     messages = conversation_store.get_messages(
-        "conv_history_123"
+        "conv_history_123", "local-dev"
     )
 
     assert len(messages) == 2
@@ -142,7 +143,7 @@ def test_chat_message_saves_conversation_history() -> None:
 def test_chat_stream_saves_complete_assistant_message() -> None:
     from app.api.v1.endpoints.chat import conversation_store
 
-    conversation_store._messages.clear()
+    conversation_store.clear()
 
     payload = {
         "message": "What is the rent?",
@@ -169,7 +170,7 @@ def test_chat_stream_saves_complete_assistant_message() -> None:
     assert response.status_code == 200
 
     messages = conversation_store.get_messages(
-        "conv_stream_history_123"
+        "conv_stream_history_123", "local-dev"
     )
 
     assert len(messages) == 2
@@ -182,16 +183,18 @@ def test_chat_stream_saves_complete_assistant_message() -> None:
 def test_get_chat_history_returns_saved_messages() -> None:
     from app.api.v1.endpoints.chat import conversation_store
 
-    conversation_store._messages.clear()
+    conversation_store.clear()
 
     conversation_store.add_message(
         conversation_id="conv_history_get_123",
+        requested_by="local-dev",
         role="user",
         content="What is the rent?",
     )
 
     conversation_store.add_message(
         conversation_id="conv_history_get_123",
+        requested_by="local-dev",
         role="assistant",
         content="The monthly rent is 5,000.",
     )
@@ -270,14 +273,16 @@ def test_chat_stream_emits_confirmation_event() -> None:
 def test_previous_turns_are_passed_to_stream_agent() -> None:
     from app.api.v1.endpoints.chat import conversation_store
 
-    conversation_store._messages.clear()
+    conversation_store.clear()
     conversation_store.add_message(
         conversation_id="conv_context_123",
+        requested_by="local-dev",
         role="user",
         content="Tell me about contract.pdf",
     )
     conversation_store.add_message(
         conversation_id="conv_context_123",
+        requested_by="local-dev",
         role="assistant",
         content="It is the vendor agreement.",
     )
@@ -309,7 +314,7 @@ def test_stream_history_preserves_message_metadata() -> None:
     from app.schemas.chat import Citation
     from app.schemas.confirmation import ConfirmationEvent
 
-    conversation_store._messages.clear()
+    conversation_store.clear()
     attachment = {
         "fileId": "f_1",
         "fileName": "contract.pdf",
@@ -361,3 +366,35 @@ def test_stream_history_preserves_message_metadata() -> None:
     assert assistant_message["citations"][0]["id"] == "chunk_1"
     assert assistant_message["confirmation"]["confirmationId"] == "cf_1"
     assert assistant_message["jobIds"] == ["job_1"]
+
+
+def test_chat_history_rejects_unauthenticated_request() -> None:
+    with (
+        patch.object(settings, "environment", "production"),
+        patch.object(settings, "allow_local_auth_bypass", False),
+    ):
+        response = client.get(
+            "/api/chat/history",
+            params={"conversationId": "conv_private"},
+        )
+
+    assert response.status_code == 401
+
+
+def test_chat_history_rejects_another_user() -> None:
+    from app.api.v1.endpoints.chat import conversation_store
+
+    conversation_store.clear()
+    conversation_store.add_message(
+        conversation_id="conv_private",
+        requested_by="another-user",
+        role="user",
+        content="Private message",
+    )
+
+    response = client.get(
+        "/api/chat/history",
+        params={"conversationId": "conv_private"},
+    )
+
+    assert response.status_code == 403

@@ -21,6 +21,7 @@ conversation_store = InMemoryConversationStore()
 def _sse_response(
     conversation_id: str,
     events: Iterable[AgentEvent],
+    requested_by: str,
 ) -> Iterator[str]:
     # Keepalive comment to prevent proxy timeouts
     yield ": keepalive\n\n"
@@ -139,6 +140,7 @@ def _sse_response(
     if assistant_message or citations or confirmation or job_ids:
         conversation_store.add_message(
             conversation_id=conversation_id,
+            requested_by=requested_by,
             role="assistant",
             content=assistant_message,
             citations=citations,
@@ -163,10 +165,20 @@ def send_message(
         request.conversation_id
         or f"conv_{uuid4().hex}"
     )
-    history = conversation_store.get_messages(conversation_id)
+    try:
+        history = conversation_store.get_messages(
+            conversation_id,
+            user.user_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="Conversation access denied",
+        ) from exc
 
     conversation_store.add_message(
         conversation_id=conversation_id,
+        requested_by=user.user_id,
         role="user",
         content=request.message,
         attachments=request.attachments,
@@ -187,6 +199,7 @@ def send_message(
                     source_blob_path=source_blob_path,
                     history=history,
                 ),
+                user.user_id,
             ),
             media_type="text/event-stream",
         )
@@ -196,6 +209,7 @@ def send_message(
 
         conversation_store.add_message(
             conversation_id=conversation_id,
+            requested_by=user.user_id,
             role="assistant",
             content=answer,
         )
@@ -221,10 +235,18 @@ def send_message(
 @router.get("/history")
 def get_chat_history(
     conversationId: str,
+    user: AuthenticatedUser = Depends(get_current_user),
 ):
-    messages = conversation_store.get_messages(
-        conversationId
-    )
+    try:
+        messages = conversation_store.get_messages(
+            conversationId,
+            user.user_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="Conversation access denied",
+        ) from exc
 
     return {
         "conversationId": conversationId,

@@ -55,6 +55,7 @@ class JobEntity(BaseModel):
     document_id: str = Field(..., description="Unique Document ID")
     status: JobStatus = Field(default=JobStatus.QUEUED)
     blob_name: str = Field(...)
+    requested_by: str = Field(..., min_length=1)
 
     etag: str | None = Field(default=None)
     error_message: str | None = Field(default=None)

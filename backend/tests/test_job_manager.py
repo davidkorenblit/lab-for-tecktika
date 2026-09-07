@@ -23,7 +23,9 @@ def test_create_job_and_enqueue_includes_source_blob_path() -> None:
     mock_send_job_message.assert_called_once()
 
     message = mock_send_job_message.call_args.args[0]
+    job = mock_create_job.call_args.args[0]
 
+    assert job.requested_by == "test-user"
     assert message.blob_name == "contract.pdf"
     assert message.document_id == "doc-123"
     assert message.etag == '"etag-123"'

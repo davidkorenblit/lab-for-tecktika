@@ -21,24 +21,34 @@ class AuthenticatedUser(BaseModel):
 _jwks_client: PyJWKClient | None = None
 
 
+def _require_auth_configuration() -> tuple[str, str]:
+    tenant_id = settings.azure_tenant_id.strip()
+    client_id = settings.azure_client_id_api.strip()
+    if not tenant_id or not client_id:
+        logger.error("Entra authentication configuration is incomplete")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service is not configured",
+        )
+    return tenant_id, client_id
+
+
 def get_jwks_client() -> PyJWKClient:
     global _jwks_client
     if _jwks_client is None:
-        tenant_id = settings.azure_tenant_id or "common"
+        tenant_id, _ = _require_auth_configuration()
         jwks_url = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
         _jwks_client = PyJWKClient(jwks_url, cache_keys=True)
     return _jwks_client
 
 
 def get_expected_issuer() -> str:
-    tenant_id = settings.azure_tenant_id or "common"
+    tenant_id, _ = _require_auth_configuration()
     return f"https://login.microsoftonline.com/{tenant_id}/v2.0"
 
 
 def get_expected_audiences() -> list[str]:
-    client_id = settings.azure_client_id_api
-    if not client_id:
-        return []
+    _, client_id = _require_auth_configuration()
     return [client_id, f"api://{client_id}"]
 
 
@@ -47,6 +57,7 @@ def validate_token(token: str) -> dict[str, Any]:
     Validates a Microsoft Entra ID JWT Bearer token using JWKS.
     Checks issuer, audience, and scope (access_as_user).
     """
+    _require_auth_configuration()
     client = get_jwks_client()
     expected_issuer = get_expected_issuer()
     expected_audiences = get_expected_audiences()
@@ -62,7 +73,7 @@ def validate_token(token: str) -> dict[str, Any]:
             options={
                 "verify_exp": True,
                 "verify_iss": True,
-                "verify_aud": bool(expected_audiences),
+                "verify_aud": True,
             },
         )
     except PyJWTError as exc:
@@ -73,9 +84,8 @@ def validate_token(token: str) -> dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    # Validate scope if present
     scopes = payload.get("scp", "").split()
-    if scopes and "access_as_user" not in scopes:
+    if "access_as_user" not in scopes:
         logger.warning("Token missing access_as_user scope")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

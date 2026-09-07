@@ -1,7 +1,8 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
+from app.core.security import AuthenticatedUser, get_current_user
 from app.schemas.jobs import JobOperation
 from app.services.blob_service import upload_document
 from app.services.job_manager import create_job_and_enqueue
@@ -12,6 +13,7 @@ MAX_FILE_SIZE = 50 * 1024 * 1024
 @router.post("")
 async def upload_document_endpoint(
     file: UploadFile = File(...),
+    user: AuthenticatedUser = Depends(get_current_user),
 ):
     if file.content_type != "application/pdf":
         raise HTTPException(
@@ -40,7 +42,7 @@ async def upload_document_endpoint(
         operation=JobOperation.ADD,
         file_name=file.filename,
         blob_name=file.filename,
-        requested_by="local-dev",
+        requested_by=user.user_id,
         document_id=document_id,
         etag=etag,
         source_blob_path=source_blob_path,

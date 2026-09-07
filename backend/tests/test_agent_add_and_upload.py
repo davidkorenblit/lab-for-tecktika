@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.agent.events import AgentEvent
 from app.agent.runner import stream_agent
 from app.main import app
+from app.core.config import settings
 
 
 def test_add_document_creates_job_from_trusted_attachment() -> None:
@@ -120,6 +121,25 @@ def test_upload_url_endpoint() -> None:
     assert body["uploadUrl"].startswith("https://")
 
 
+def test_upload_url_rejects_unauthenticated_request() -> None:
+    client = TestClient(app)
+
+    with (
+        patch.object(settings, "environment", "production"),
+        patch.object(settings, "allow_local_auth_bypass", False),
+    ):
+        response = client.post(
+            "/api/files/upload-url",
+            json={
+                "fileName": "contract.pdf",
+                "contentType": "application/pdf",
+                "size": 1024,
+            },
+        )
+
+    assert response.status_code == 401
+
+
 def test_job_status_route() -> None:
     client = TestClient(app)
 
@@ -128,6 +148,7 @@ def test_job_status_route() -> None:
         return_value={
             "RowKey": "job_1",
             "status": "QUEUED",
+            "requested_by": "local-dev",
         },
     ):
         response = client.get(

@@ -36,6 +36,7 @@ def create_job_and_enqueue(
         RowKey=resolved_job_id,
         document_id=document_id,
         blob_name=blob_name,
+        requested_by=requested_by,
         etag=etag,
     )
 

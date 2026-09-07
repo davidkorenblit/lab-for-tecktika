@@ -145,6 +145,38 @@ def test_validate_token_missing_scope() -> None:
         assert "access_as_user" in exc_info.value.detail
 
 
+def test_validate_token_requires_scope_claim() -> None:
+    mock_jwk_client = MagicMock()
+    mock_signing_key = MagicMock()
+    mock_signing_key.key = "public_key"
+    mock_jwk_client.get_signing_key_from_jwt.return_value = mock_signing_key
+
+    with (
+        patch("app.core.security.get_jwks_client", return_value=mock_jwk_client),
+        patch("jwt.decode", return_value={"oid": "u1"}),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            validate_token("some.token")
+        assert exc_info.value.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("tenant_id", "client_id"),
+    [("", "client_123"), ("tenant_123", "")],
+)
+def test_validate_token_requires_entra_configuration(
+    tenant_id: str,
+    client_id: str,
+) -> None:
+    with (
+        patch.object(settings, "azure_tenant_id", tenant_id),
+        patch.object(settings, "azure_client_id_api", client_id),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            validate_token("some.token")
+        assert exc_info.value.status_code == 503
+
+
 def test_expected_audiences() -> None:
     with patch.object(settings, "azure_client_id_api", "client_123"):
         audiences = get_expected_audiences()

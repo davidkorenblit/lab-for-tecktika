@@ -1,7 +1,8 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.security import AuthenticatedUser, get_current_user
 from app.schemas.files import UploadUrlRequest, UploadUrlResponse
 from app.services.upload_service import create_upload_url
 
@@ -21,6 +22,7 @@ router = APIRouter()
 )
 def create_file_upload_url(
     request: UploadUrlRequest,
+    _user: AuthenticatedUser = Depends(get_current_user),
 ) -> UploadUrlResponse:
     try:
         result = create_upload_url(
@@ -43,6 +45,7 @@ def create_file_upload_url(
 )
 def confirm_action(
     request: ConfirmActionRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> ConfirmActionResponse:
     """Validate and atomically claim a destructive action before queueing it.
 
@@ -59,6 +62,12 @@ def confirm_action(
         raise HTTPException(
             status_code=404,
             detail="Confirmation not found",
+        )
+
+    if pending.requested_by != user.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Confirmation access denied",
         )
 
     if request.action.upper() != pending.action.value.lower().upper():

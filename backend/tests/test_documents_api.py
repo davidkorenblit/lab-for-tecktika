@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.main import app
 
 
@@ -78,3 +79,23 @@ def test_upload_document_success():
     assert job_call["document_id"] == body["document_id"]
     assert job_call["etag"] == '"etag-123"'
     assert job_call["source_blob_path"] == "staging/contract.pdf"
+    assert job_call["requested_by"] == "local-dev"
+
+
+def test_document_upload_rejects_unauthenticated_request() -> None:
+    with (
+        patch.object(settings, "environment", "production"),
+        patch.object(settings, "allow_local_auth_bypass", False),
+    ):
+        response = client.post(
+            "/api/v1/documents",
+            files={
+                "file": (
+                    "contract.pdf",
+                    b"%PDF-1.4 test content",
+                    "application/pdf",
+                )
+            },
+        )
+
+    assert response.status_code == 401
