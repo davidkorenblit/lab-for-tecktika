@@ -63,6 +63,25 @@ def _sse_response(
                     f"data: {confirmation_data}\n\n"
                 )
 
+            elif event.type == "job":
+                if event.job is None:
+                    raise ValueError(
+                        "Job event is missing its payload"
+                    )
+
+                job_data = json.dumps(
+                    event.job.model_dump(
+                        by_alias=True,
+                        mode="json",
+                    ),
+                    separators=(",", ":"),
+                )
+
+                yield (
+                    "event: job\n"
+                    f"data: {job_data}\n\n"
+                )
+
     except ValueError as exc:
         error_data = json.dumps(
             {"message": str(exc)},

@@ -1,5 +1,8 @@
 from fastapi import APIRouter, HTTPException
 
+from app.schemas.files import UploadUrlRequest, UploadUrlResponse
+from app.services.upload_service import create_upload_url
+
 from app.schemas.confirmation import (
     ConfirmActionRequest,
     ConfirmActionResponse,
@@ -8,6 +11,28 @@ from app.services.confirmation_service import confirmation_store
 from app.services.job_manager import create_job_and_enqueue
 
 router = APIRouter()
+
+
+@router.post(
+    "/upload-url",
+    response_model=UploadUrlResponse,
+)
+def create_file_upload_url(
+    request: UploadUrlRequest,
+) -> UploadUrlResponse:
+    try:
+        result = create_upload_url(
+            file_name=request.file_name,
+            content_type=request.content_type,
+            size=request.size,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    return UploadUrlResponse.model_validate(result)
 
 
 @router.post(

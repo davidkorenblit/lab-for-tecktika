@@ -1,9 +1,10 @@
 import json
+from uuid import uuid4
 from collections.abc import Iterator
 
 from pydantic import BaseModel
 
-from app.agent.events import AgentEvent
+from app.agent.events import AgentEvent, JobEvent
 from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.tools.base import BaseTool, to_openai_tool
 from app.agent.tools.document_tools import (
@@ -20,6 +21,7 @@ from app.services.azure_openai import (
 )
 from app.services.confirmation_service import confirmation_store
 from app.services.file_resolver import resolve_document
+from app.services.job_manager import create_job_and_enqueue
 
 
 TOOLS: tuple[BaseTool[BaseModel], ...] = (
@@ -242,9 +244,34 @@ def stream_agent(
             return
 
         if tool.name == "add_document":
-            raise ValueError(
-                "Add document handling is not connected yet"
+            if not source_blob_path:
+                raise ValueError(
+                    "Adding a document requires an uploaded attachment"
+                )
+
+            file_name = getattr(arguments, "file_name", None)
+
+            if not isinstance(file_name, str) or not file_name.strip():
+                raise ValueError("A valid file name is required")
+
+            job = create_job_and_enqueue(
+                operation=JobOperation.ADD,
+                file_name=file_name,
+                blob_name=file_name,
+                requested_by=requested_by,
+                document_id=str(uuid4()),
+                source_blob_path=source_blob_path,
             )
+
+            yield AgentEvent(
+                type="job",
+                job=JobEvent(
+                    jobId=job.RowKey,
+                    status="queued",
+                    fileName=file_name,
+                ),
+            )
+            return
 
         result = tool.execute(arguments)
 
