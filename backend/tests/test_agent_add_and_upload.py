@@ -132,3 +132,44 @@ def test_job_status_route() -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "QUEUED"
+
+
+def test_chat_stream_emits_citations_event() -> None:
+    client = TestClient(app)
+
+    event = AgentEvent.model_validate(
+        {
+            "type": "citations",
+            "citations": [
+                {
+                    "id": "chunk_1",
+                    "fileName": "contract.pdf",
+                    "title": "contract.pdf",
+                    "url": "https://example.test/contract.pdf",
+                    "page": 2,
+                    "snippet": "Monthly rent: 5,000.",
+                    "score": 3.75,
+                }
+            ],
+        }
+    )
+
+    with patch(
+        "app.api.v1.endpoints.chat.stream_agent",
+        return_value=iter([event]),
+    ):
+        response = client.post(
+            "/api/chat/message",
+            json={
+                "message": "What is the rent?",
+                "conversationId": "conv_123",
+                "stream": True,
+            },
+            headers={"Accept": "text/event-stream"},
+        )
+
+    assert response.status_code == 200
+    assert "event: citations" in response.text
+    assert '"fileName":"contract.pdf"' in response.text
+    assert '"page":2' in response.text
+    assert '"score":3.75' in response.text

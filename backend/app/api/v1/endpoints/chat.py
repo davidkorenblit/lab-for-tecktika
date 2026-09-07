@@ -44,6 +44,29 @@ def _sse_response(
                 )
                 yield f"event: delta\ndata: {delta_data}\n\n"
 
+            elif event.type == "citations":
+                if event.citations is None:
+                    raise ValueError(
+                        "Citations event is missing its payload"
+                    )
+
+                citations_data = json.dumps(
+                    [
+                        citation.model_dump(
+                            by_alias=True,
+                            mode="json",
+                            exclude_none=True,
+                        )
+                        for citation in event.citations
+                    ],
+                    separators=(",", ":"),
+                )
+
+                yield (
+                    "event: citations\n"
+                    f"data: {citations_data}\n\n"
+                )
+
             elif event.type == "confirmation":
                 if event.confirmation is None:
                     raise ValueError(

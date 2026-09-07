@@ -13,6 +13,7 @@ from app.agent.tools.document_tools import (
     ReplaceDocumentTool,
 )
 from app.agent.tools.search_tool import SearchDocumentsTool
+from app.schemas.chat import Citation
 from app.schemas.confirmation import ConfirmationEvent
 from app.schemas.jobs import JobOperation
 from app.services.azure_openai import (
@@ -274,6 +275,58 @@ def stream_agent(
             return
 
         result = tool.execute(arguments)
+
+        if tool.name == "search_documents":
+            citations: list[Citation] = []
+
+            if isinstance(result, list):
+                for item in result:
+                    if not isinstance(item, dict):
+                        continue
+
+                    chunk_id = item.get("chunk_id")
+                    file_name = item.get("file_name")
+
+                    if not chunk_id or not file_name:
+                        continue
+
+                    score = item.get("reranker_score")
+                    if score is None:
+                        score = item.get("score")
+
+                    citations.append(
+                        Citation(
+                            id=str(chunk_id),
+                            fileName=str(file_name),
+                            title=str(file_name),
+                            url=(
+                                str(item["source_url"])
+                                if item.get("source_url")
+                                else None
+                            ),
+                            page=(
+                                int(item["page"])
+                                if item.get("page") is not None
+                                else None
+                            ),
+                            snippet=(
+                                str(item["content"])
+                                if item.get("content")
+                                else None
+                            ),
+                            score=(
+                                float(score)
+                                if score is not None
+                                else None
+                            ),
+                        )
+                    )
+
+            if citations:
+                yield AgentEvent(
+                    type="citations",
+                    citations=citations,
+                )
 
         messages.append(
             {

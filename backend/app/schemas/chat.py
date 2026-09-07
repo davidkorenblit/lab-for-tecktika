@@ -38,8 +38,11 @@ class Citation(BaseModel):
 
     id: str = Field(min_length=1)
     file_name: str = Field(alias="fileName", min_length=1)
+    title: str | None = None
+    url: str | None = None
     page: int | None = None
     snippet: str | None = None
+    score: float | None = None
 
 
 class ChatHistoryMessage(BaseModel):

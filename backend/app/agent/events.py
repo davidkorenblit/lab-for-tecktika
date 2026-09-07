@@ -2,6 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.chat import Citation
 from app.schemas.confirmation import ConfirmationEvent
 
 
@@ -16,7 +17,8 @@ class JobEvent(BaseModel):
 class AgentEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["delta", "confirmation", "job"]
+    type: Literal["delta", "citations", "confirmation", "job"]
     delta: str | None = None
+    citations: list[Citation] | None = None
     confirmation: ConfirmationEvent | None = None
     job: JobEvent | None = None
