@@ -2,11 +2,12 @@ import json
 from collections.abc import Iterable, Iterator
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.agent.events import AgentEvent
 from app.agent.runner import run_agent, stream_agent
+from app.core.security import AuthenticatedUser, get_current_user
 from app.schemas.chat import ChatMessageRequest
 from app.services.conversation_service import InMemoryConversationStore
 
@@ -20,6 +21,9 @@ def _sse_response(
     conversation_id: str,
     events: Iterable[AgentEvent],
 ) -> Iterator[str]:
+    # Keepalive comment to prevent proxy timeouts
+    yield ": keepalive\n\n"
+
     start_data = json.dumps(
         {"conversationId": conversation_id},
         separators=(",", ":"),
@@ -132,11 +136,19 @@ def _sse_response(
             content=assistant_message,
         )
 
+    done_data = json.dumps(
+        {"conversationId": conversation_id},
+        separators=(",", ":"),
+    )
+    yield f"event: done\ndata: {done_data}\n\n"
     yield "data: [DONE]\n\n"
 
 
 @router.post("/message")
-def send_message(request: ChatMessageRequest):
+def send_message(
+    request: ChatMessageRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+):
     conversation_id = (
         request.conversation_id
         or f"conv_{uuid4().hex}"
@@ -159,7 +171,7 @@ def send_message(request: ChatMessageRequest):
                 conversation_id,
                 stream_agent(
                     request.message,
-                    requested_by=conversation_id,
+                    requested_by=user.user_id,
                     source_blob_path=source_blob_path,
                 ),
             ),

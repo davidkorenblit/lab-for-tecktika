@@ -4,11 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.endpoints import chat, files
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.telemetry import setup_telemetry
 
 
 app = FastAPI(
     title=settings.app_name
 )
+
+setup_telemetry(app)
 
 app.add_middleware(
     CORSMiddleware,
