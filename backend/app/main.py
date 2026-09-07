@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1.endpoints import chat
+from app.api.v1.endpoints import chat, files
 from app.api.v1.router import api_router
 from app.core.config import settings
 
@@ -31,6 +31,13 @@ app.include_router(
     chat.router,
     prefix="/api/chat",
     tags=["chat"],
+)
+
+
+app.include_router(
+    files.router,
+    prefix="/api/files",
+    tags=["files"],
 )
 
 
