@@ -23,6 +23,7 @@ var roleIds = {
   storageTableDataContributor: '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
   cognitiveServicesOpenAiUser: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
   searchIndexDataContributor: '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
+  searchServiceContributor: '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
 }
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' existing = {
@@ -126,6 +127,22 @@ resource workerSearch 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: searchService
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.searchIndexDataContributor)
+    principalId: workerPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Search Index Data Contributor above only covers documents in an index, which
+// is enough for the worker's surgical chunk deletion. Running the indexer is a
+// different permission: services/search_service.py calls run_indexer() and
+// get_indexer_status() through SearchIndexerClient, and those need Search
+// Service Contributor. Without it the worker 403s the moment it picks up its
+// first job.
+resource workerSearchService 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(searchService.id, workerPrincipalId, roleIds.searchServiceContributor)
+  scope: searchService
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.searchServiceContributor)
     principalId: workerPrincipalId
     principalType: 'ServicePrincipal'
   }
