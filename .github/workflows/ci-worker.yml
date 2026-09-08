@@ -55,10 +55,6 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       # Azure/functions-action deploys a Linux Consumption app with RBAC by
       # uploading a zip and pointing WEBSITE_RUN_FROM_PACKAGE at it. That path
       # never runs an Oryx remote build, so scm-do-build-during-deployment
@@ -67,14 +63,24 @@ jobs:
       # index the app - "ModuleNotFoundError: No module named 'pydantic'",
       # "0 functions loaded" (App Insights, confirmed 2026-09-08) - so the
       # queue trigger has never actually run in Azure.
+      #
       # /home/site/wwwroot/.python_packages/lib/site-packages is already on the
-      # worker's sys.path, so vendoring the dependencies there is what makes
-      # the uploaded package complete. The runner is Linux x64 / Python 3.11,
-      # matching the Function App runtime, so the wheels are compatible.
+      # worker's sys.path, so vendoring the dependencies there completes the
+      # package. They are installed inside the Function App's own runtime image
+      # rather than on the runner: pip on ubuntu-latest resolves wheels built
+      # against a newer glibc than the runtime has, which swapped the error for
+      # "GLIBC_2.33 not found (required by cryptography/.../_rust.abi3.so)".
       - name: Vendor dependencies into the deployment package
         working-directory: worker
         run: |
-          python -m pip install             --target ".python_packages/lib/site-packages"             -r requirements.txt
+          docker run --rm \
+            --volume "$PWD":/pkg \
+            --workdir /pkg \
+            --entrypoint /bin/bash \
+            mcr.microsoft.com/azure-functions/python:4-python3.11 \
+            -c "pip install --no-cache-dir --target .python_packages/lib/site-packages -r requirements.txt"
+          sudo chown -R "$(id -u):$(id -g)" .python_packages
+          python3 -c "import pathlib; print('vendored packages:', len(list(pathlib.Path('.python_packages/lib/site-packages').iterdir())))"
 
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
