@@ -234,9 +234,19 @@ def send_message(
 
 @router.get("/history")
 def get_chat_history(
-    conversationId: str,
+    conversationId: str | None = None,
     user: AuthenticatedUser = Depends(get_current_user),
 ):
+    # The client asks for history before it holds a conversation id - a freshly
+    # created thread, or a first load with nothing in localStorage. Requiring
+    # the parameter made every one of those a 422, which is what the live SPA
+    # was hitting on load. There is no per-user "most recent conversation"
+    # lookup in the store, and silently resuming one would surprise a user who
+    # deliberately started a new thread, so an id-less request is simply an
+    # empty conversation.
+    if conversationId is None:
+        return {"conversationId": None, "messages": []}
+
     try:
         messages = conversation_store.get_messages(
             conversationId,

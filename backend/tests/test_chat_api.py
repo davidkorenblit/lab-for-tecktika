@@ -359,6 +359,19 @@ def test_stream_history_preserves_message_metadata() -> None:
     assert assistant_message["jobIds"] == ["job_1"]
 
 
+def test_get_chat_history_without_conversation_id_is_empty() -> None:
+    # A fresh thread has no conversation id yet and the SPA still asks for
+    # history on load; that must not be a validation error.
+    response = client.get("/api/chat/history")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["conversationId"] is None
+    assert data["messages"] == []
+
+
 def test_chat_history_rejects_unauthenticated_request() -> None:
     with (
         patch.object(settings, "environment", "production"),
