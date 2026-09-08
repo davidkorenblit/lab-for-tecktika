@@ -55,6 +55,27 @@ jobs:
           fi
           echo "overrides=$overrides" >> "$GITHUB_OUTPUT"
 
+      # ci-worker.yml publishes through Azure/functions-action, which on Linux
+      # Consumption with RBAC deploys by writing a WEBSITE_RUN_FROM_PACKAGE
+      # blob URL onto the Function App. compute.bicep declares the app's
+      # settings inline, and ARM treats that array as authoritative - so an
+      # infra deploy deletes the key and leaves the worker running with no
+      # code (observed live 2026-09-08). Preserving it inside the template
+      # needs the resource to read its own current settings, which ARM
+      # rejects as a circular dependency, so it is captured and put back here
+      # instead. Nothing to restore on a first deploy, when it doesn't exist.
+      - name: Capture worker package URL
+        id: worker_pkg
+        run: |
+          value="$(az functionapp config appsettings list             --name "${{ vars.FUNCTION_APP_NAME }}"             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"             --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value | [0]"             -o tsv 2>/dev/null || true)"
+          if [ -n "$value" ]; then
+            echo "::add-mask::$value"
+            echo "Captured WEBSITE_RUN_FROM_PACKAGE to restore after the deploy."
+          else
+            echo "No WEBSITE_RUN_FROM_PACKAGE on the worker - nothing to restore."
+          fi
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
       - name: Validate template
         run: |
           az deployment group validate \
@@ -71,6 +92,19 @@ jobs:
             --template-file infrastructure/main.bicep \
             --parameters infrastructure/main.bicepparam \
             ${{ steps.entra.outputs.overrides }}
+
+      - name: Restore worker package URL
+        if: always() && steps.worker_pkg.outputs.value != ''
+        env:
+          PACKAGE_URL: ${{ steps.worker_pkg.outputs.value }}
+        run: |
+          current="$(az functionapp config appsettings list             --name "${{ vars.FUNCTION_APP_NAME }}"             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"             --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value | [0]"             -o tsv 2>/dev/null || true)"
+          if [ "$current" = "$PACKAGE_URL" ]; then
+            echo "Worker package URL survived the deploy."
+            exit 0
+          fi
+          echo "Deploy dropped WEBSITE_RUN_FROM_PACKAGE - putting it back."
+          az functionapp config appsettings set             --name "${{ vars.FUNCTION_APP_NAME }}"             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"             --settings "WEBSITE_RUN_FROM_PACKAGE=$PACKAGE_URL"             --output none
 
       - name: Show outputs
         run: |

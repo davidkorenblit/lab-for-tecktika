@@ -165,42 +165,25 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     siteConfig: {
       linuxFxVersion: 'Python|3.11'
+      appSettings: [
+        { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
+        { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'python' }
+        { name: 'AzureWebJobsStorage__accountName', value: storageAccountName }
+        { name: 'AzureWebJobsStorage__credential', value: 'managedidentity' }
+        { name: 'STORAGE_CONNECTION__accountName', value: storageAccountName }
+        { name: 'STORAGE_CONNECTION__credential', value: 'managedidentity' }
+        { name: 'AZURE_STORAGE_ACCOUNT_NAME', value: storageAccountName }
+        { name: 'BLOB_CONTAINER_NAME', value: blobContainerName }
+        { name: 'STAGING_CONTAINER_NAME', value: stagingContainerName }
+        { name: 'STORAGE_QUEUE_NAME', value: queueName }
+        { name: 'JOB_STATUS_TABLE_NAME', value: jobStatusTableName }
+        { name: 'AZURE_SEARCH_ENDPOINT', value: searchEndpoint }
+        { name: 'AZURE_OPENAI_ENDPOINT', value: openAiEndpoint }
+        { name: 'OPENAI_EMBEDDING_DEPLOYMENT', value: embeddingDeploymentName }
+        { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
+      ]
     }
   }
-}
-
-// App settings are a child resource unioned over whatever is already on the
-// app, rather than an inline siteConfig.appSettings array. ci-worker.yml
-// publishes through Azure/functions-action, which on Linux Consumption with
-// RBAC deploys via WEBSITE_RUN_FROM_PACKAGE - a setting it writes onto the
-// Function App itself. An inline array is authoritative, so every infra
-// redeploy silently deleted that key and left the Function App running with
-// no code at all until the worker pipeline happened to run again (observed
-// live on 2026-09-08). union() takes the later object's value on conflict, so
-// the settings declared here still win over any stale value on the app.
-resource functionAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
-  parent: functionApp
-  name: 'appsettings'
-  properties: union(
-    list('${functionApp.id}/config/appsettings', '2023-12-01').properties,
-    {
-      FUNCTIONS_EXTENSION_VERSION: '~4'
-      FUNCTIONS_WORKER_RUNTIME: 'python'
-      AzureWebJobsStorage__accountName: storageAccountName
-      AzureWebJobsStorage__credential: 'managedidentity'
-      STORAGE_CONNECTION__accountName: storageAccountName
-      STORAGE_CONNECTION__credential: 'managedidentity'
-      AZURE_STORAGE_ACCOUNT_NAME: storageAccountName
-      BLOB_CONTAINER_NAME: blobContainerName
-      STAGING_CONTAINER_NAME: stagingContainerName
-      STORAGE_QUEUE_NAME: queueName
-      JOB_STATUS_TABLE_NAME: jobStatusTableName
-      AZURE_SEARCH_ENDPOINT: searchEndpoint
-      AZURE_OPENAI_ENDPOINT: openAiEndpoint
-      OPENAI_EMBEDDING_DEPLOYMENT: embeddingDeploymentName
-      APPLICATIONINSIGHTS_CONNECTION_STRING: appInsightsConnectionString
-    }
-  )
 }
 
 // --- Frontend: Azure Static Web Apps (Free tier) -----------------------------
