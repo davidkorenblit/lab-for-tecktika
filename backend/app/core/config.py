@@ -11,10 +11,20 @@ class Settings(BaseSettings):
     # Azure AI Search
     azure_search_endpoint: str = "https://srch-ragpoc-dev-qelri355piqlq.search.windows.net"
     azure_search_index_name: str = "pdf-chunks-index"
-    azure_search_semantic_configuration_name: str = "pdf-chunks-semantic-config"
+    # The live index defines no semantic configuration at all, and
+    # azure_search.py only asks for semantic ranking when this is non-empty.
+    # Naming one that does not exist makes every query a 400: "This index
+    # must have valid semantic configurations defined before using the
+    # 'semanticConfiguration' query parameter." Set this once
+    # worker/services/search_indexer.py actually creates one.
+    azure_search_semantic_configuration_name: str = ""
 
     # Azure AI Search schema fields
-    aas_field_chunk_id: str = "chunkId"
+    # The index's key field is `id` - see the SearchField definitions in
+    # worker/services/search_indexer.py, which is what creates the index.
+    # "chunkId" made every search 400 on $select: "Could not find a
+    # property named 'chunkId' on type 'search.document'".
+    aas_field_chunk_id: str = "id"
     aas_field_parent_document_id: str = "parentDocumentId"
     aas_field_file_name: str = "fileName"
     aas_field_content: str = "content"
