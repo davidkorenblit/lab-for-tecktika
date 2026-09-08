@@ -41,10 +41,27 @@ AgentMessage = ChatCompletionMessageParam | ChatCompletionMessage
 def _build_messages(
     user_message: str,
     history: list[ChatHistoryMessage] | None = None,
+    source_blob_path: str | None = None,
+    attachment_file_name: str | None = None,
 ) -> list[AgentMessage]:
     messages: list[AgentMessage] = [
         {"role": "system", "content": SYSTEM_PROMPT}
     ]
+
+    # If an attachment is present, inject it as a system-level context message
+    # so the model knows about the file without requiring the user to type its name.
+    if source_blob_path and attachment_file_name:
+        messages.append({
+            "role": "system",
+            "content": (
+                f"The user has attached a file named '{attachment_file_name}' "
+                f"(staged at: {source_blob_path}). "
+                "If the user's message implies they want this file added, indexed, or processed, "
+                "call the add_document tool with this file name. "
+                "Do not ask the user to type the file name again."
+            ),
+        })
+
     selected: list[ChatHistoryMessage] = []
     remaining_characters = MAX_HISTORY_CHARACTERS
 
@@ -156,14 +173,34 @@ def _prepare_confirmation(
     )
 
 
+def _allowed_tools(source_blob_path: str | None) -> tuple[BaseTool[BaseModel], ...]:
+    """
+    Returns the subset of tools the model is allowed to call for this turn.
+
+    When an attachment is present, delete_document is excluded entirely:
+    an attachment is an unambiguous signal of an add/replace intent, never a
+    deletion. Removing the tool from the schema is the strongest possible
+    guardrail — the model cannot choose what it cannot see.
+    """
+    if source_blob_path:
+        return tuple(t for t in TOOLS if t.name != "delete_document")
+    return TOOLS
+
+
 def run_agent(
     user_message: str,
     *,
     history: list[ChatHistoryMessage] | None = None,
+    source_blob_path: str | None = None,
+    attachment_file_name: str | None = None,
 ) -> str:
-    messages = _build_messages(user_message, history)
-
-    openai_tools = [to_openai_tool(tool) for tool in TOOLS]
+    messages = _build_messages(
+        user_message,
+        history,
+        source_blob_path=source_blob_path,
+        attachment_file_name=attachment_file_name,
+    )
+    openai_tools = [to_openai_tool(tool) for tool in _allowed_tools(source_blob_path)]
 
     response = create_chat_completion(
         messages,
@@ -214,11 +251,16 @@ def stream_agent(
     *,
     requested_by: str,
     source_blob_path: str | None = None,
+    attachment_file_name: str | None = None,
     history: list[ChatHistoryMessage] | None = None,
 ) -> Iterator[AgentEvent]:
-    messages = _build_messages(user_message, history)
-
-    openai_tools = [to_openai_tool(tool) for tool in TOOLS]
+    messages = _build_messages(
+        user_message,
+        history,
+        source_blob_path=source_blob_path,
+        attachment_file_name=attachment_file_name,
+    )
+    openai_tools = [to_openai_tool(tool) for tool in _allowed_tools(source_blob_path)]
 
     response = create_chat_completion(
         messages,
@@ -248,6 +290,15 @@ def stream_agent(
             tool,
             tool_call.function.arguments,
         )
+
+        # Hard guard: delete_document must never be called when an attachment
+        # is present. _allowed_tools() already excludes it from the schema,
+        # but we enforce it here as a second layer of defence.
+        if tool.name == "delete_document" and source_blob_path:
+            raise ValueError(
+                "Deletion cannot be performed while a file is attached. "
+                "Remove the attachment and try again."
+            )
 
         if tool.name in {
             "delete_document",

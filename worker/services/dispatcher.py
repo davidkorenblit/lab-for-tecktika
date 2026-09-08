@@ -45,6 +45,8 @@ class EventDispatcher:
                 target_blob_name=event.blob_name,
                 document_id=event.document_id,
             )
+            # Clean up staging blob after successful copy
+            self.blob_service.delete_staging_blob(event.source_blob_path)
 
         # 4. Handle Indexing (CREATE / UPDATE)
         if event.event_type in (EventType.CREATE, EventType.UPDATE):

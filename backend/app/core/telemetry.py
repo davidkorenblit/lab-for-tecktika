@@ -125,11 +125,20 @@ def setup_telemetry(app: FastAPI) -> None:
     appinsights_conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
     if appinsights_conn:
         try:
-            # If opencensus or azure monitor is installed, attach handler
-            from opencensus.ext.azure.log_exporter import AzureLogHandler
-            root_logger.addHandler(AzureLogHandler(connection_string=appinsights_conn))
-            root_logger.info("Application Insights logging handler attached successfully")
+            # Preferred: azure-monitor-opentelemetry (modern Azure SDK)
+            from azure.monitor.opentelemetry import configure_azure_monitor
+            configure_azure_monitor(connection_string=appinsights_conn)
+            root_logger.info("Application Insights configured via azure-monitor-opentelemetry")
         except ImportError:
-            root_logger.info("Application Insights connection string found; install opencensus-ext-azure for direct Azure Log export")
+            try:
+                # Fallback: opencensus-ext-azure (legacy)
+                from opencensus.ext.azure.log_exporter import AzureLogHandler
+                root_logger.addHandler(AzureLogHandler(connection_string=appinsights_conn))
+                root_logger.info("Application Insights logging handler attached via opencensus-ext-azure")
+            except ImportError:
+                root_logger.warning(
+                    "APPLICATIONINSIGHTS_CONNECTION_STRING is set but no exporter is installed. "
+                    "Run: pip install azure-monitor-opentelemetry"
+                )
 
     app.add_middleware(CorrelationIdMiddleware)

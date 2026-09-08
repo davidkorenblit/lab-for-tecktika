@@ -121,3 +121,32 @@ class BlobService:
         except Exception as err:
             logging.warning(f"Failed to delete blob '{blob_name}' from container '{self.container_name}': {err}")
             return False
+
+    def delete_staging_blob(self, source_blob_path: str) -> bool:
+        """
+        Deletes a blob from the staging container after a successful copy to the
+        primary documents container. Failures are logged as warnings and do not
+        propagate — a leftover staging blob is a cosmetic issue, not a data-loss risk.
+        """
+        try:
+            staging_container = getattr(settings, "STAGING_CONTAINER_NAME", "staging")
+            blob_name = source_blob_path
+
+            # Strip leading container prefix if present (mirrors copy_from_staging logic)
+            if source_blob_path.startswith(f"{staging_container}/"):
+                blob_name = source_blob_path[len(staging_container) + 1:]
+            elif source_blob_path.startswith("staging/"):
+                blob_name = source_blob_path[len("staging/"):]
+
+            client = self._get_client()
+            staging_blob_client = client.get_blob_client(container=staging_container, blob=blob_name)
+            if staging_blob_client.exists():
+                staging_blob_client.delete_blob()
+                logging.info(f"Cleaned up staging blob '{blob_name}' from container '{staging_container}'")
+            return True
+        except Exception as err:
+            logging.warning(
+                f"Failed to clean up staging blob '{source_blob_path}': {err}. "
+                "The blob will remain in staging; this does not affect the indexed document."
+            )
+            return False

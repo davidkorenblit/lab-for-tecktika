@@ -59,3 +59,33 @@ def process_queue_message(msg: func.QueueMessage) -> None:
 
         # Re-raise exception so Azure Queue trigger increments dequeue count and routes to poison queue after retries
         raise err
+
+
+@app.queue_trigger(
+    arg_name="msg",
+    queue_name=settings.POISON_QUEUE_NAME,
+    connection="AzureWebJobsStorage"
+)
+def handle_poison_queue(msg: func.QueueMessage) -> None:
+    """
+    Poison Queue Handler: Triggers when a message reaches MaxDequeueCount.
+    Marks the corresponding job as FAILED in Table Storage so the UI reflects
+    the real state instead of remaining stuck at QUEUED forever.
+    """
+    raw_body = msg.get_body().decode("utf-8")
+    logging.error(f"Poison queue message received (ID {msg.id}): {raw_body}")
+
+    try:
+        parsed_event = parse_queue_message(raw_body)
+        job_service.mark_failed(
+            job_id=parsed_event.job_id,
+            document_id=parsed_event.document_id,
+            blob_name=parsed_event.blob_name,
+            error_msg="Message reached MaxDequeueCount and was moved to the poison queue. Check Worker logs for details.",
+        )
+        logging.error(
+            f"Job {parsed_event.job_id} marked FAILED after reaching poison queue "
+            f"(blob: {parsed_event.blob_name})"
+        )
+    except Exception as err:
+        logging.error(f"Failed to parse or update poison queue message ID {msg.id}: {err}")

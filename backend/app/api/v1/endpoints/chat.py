@@ -185,9 +185,11 @@ def send_message(
     )
 
     source_blob_path: str | None = None
+    attachment_file_name: str | None = None
 
     if len(request.attachments) == 1:
         source_blob_path = request.attachments[0].blob_path
+        attachment_file_name = request.attachments[0].file_name
 
     if request.stream:
         return StreamingResponse(
@@ -197,6 +199,7 @@ def send_message(
                     request.message,
                     requested_by=user.user_id,
                     source_blob_path=source_blob_path,
+                    attachment_file_name=attachment_file_name,
                     history=history,
                 ),
                 user.user_id,
@@ -205,8 +208,12 @@ def send_message(
         )
 
     try:
-        answer = run_agent(request.message, history=history)
-
+        answer = run_agent(
+            request.message,
+            history=history,
+            source_blob_path=source_blob_path,
+            attachment_file_name=attachment_file_name,
+        )
         conversation_store.add_message(
             conversation_id=conversation_id,
             requested_by=user.user_id,
