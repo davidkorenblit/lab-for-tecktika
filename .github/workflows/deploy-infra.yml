@@ -32,13 +32,36 @@ jobs:
             --name "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --location "${{ vars.AZURE_LOCATION || 'swedencentral' }}"
 
+      # main.bicepparam already carries the real Entra tenant/client IDs (public
+      # identifiers - they ship in the frontend bundle). Only override them when
+      # a secret is actually set: an unset secret expands to an empty string,
+      # which silently wiped AZURE_CLIENT_ID_API on the Container App and made
+      # the backend return 503 on every authenticated request.
+      - name: Build optional Entra parameter overrides
+        id: entra
+        env:
+          ENTRA_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ENTRA_API_CLIENT_ID: ${{ secrets.ENTRA_API_CLIENT_ID }}
+        run: |
+          overrides=""
+          if [ -n "$ENTRA_TENANT_ID" ]; then
+            overrides="$overrides entraTenantId=$ENTRA_TENANT_ID"
+          fi
+          if [ -n "$ENTRA_API_CLIENT_ID" ]; then
+            overrides="$overrides entraApiClientId=$ENTRA_API_CLIENT_ID"
+          fi
+          if [ -n "$overrides" ]; then
+            overrides="--parameters$overrides"
+          fi
+          echo "overrides=$overrides" >> "$GITHUB_OUTPUT"
+
       - name: Validate template
         run: |
           az deployment group validate \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --template-file infrastructure/main.bicep \
             --parameters infrastructure/main.bicepparam \
-            --parameters entraTenantId="${{ secrets.AZURE_TENANT_ID }}" entraApiClientId="${{ secrets.ENTRA_API_CLIENT_ID }}"
+            ${{ steps.entra.outputs.overrides }}
 
       - name: Deploy
         run: |
@@ -47,7 +70,7 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --template-file infrastructure/main.bicep \
             --parameters infrastructure/main.bicepparam \
-            --parameters entraTenantId="${{ secrets.AZURE_TENANT_ID }}" entraApiClientId="${{ secrets.ENTRA_API_CLIENT_ID }}"
+            ${{ steps.entra.outputs.overrides }}
 
       - name: Show outputs
         run: |
