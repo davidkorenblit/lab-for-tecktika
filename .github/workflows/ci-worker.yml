@@ -55,6 +55,27 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Azure/functions-action deploys a Linux Consumption app with RBAC by
+      # uploading a zip and pointing WEBSITE_RUN_FROM_PACKAGE at it. That path
+      # never runs an Oryx remote build, so scm-do-build-during-deployment
+      # below has no effect and the package shipped with no third-party
+      # dependencies at all. Every deploy "succeeded" while the host failed to
+      # index the app - "ModuleNotFoundError: No module named 'pydantic'",
+      # "0 functions loaded" (App Insights, confirmed 2026-09-08) - so the
+      # queue trigger has never actually run in Azure.
+      # /home/site/wwwroot/.python_packages/lib/site-packages is already on the
+      # worker's sys.path, so vendoring the dependencies there is what makes
+      # the uploaded package complete. The runner is Linux x64 / Python 3.11,
+      # matching the Function App runtime, so the wheels are compatible.
+      - name: Vendor dependencies into the deployment package
+        working-directory: worker
+        run: |
+          python -m pip install             --target ".python_packages/lib/site-packages"             -r requirements.txt
+
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
         with:
