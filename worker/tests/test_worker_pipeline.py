@@ -184,3 +184,97 @@ def test_process_queue_message_failure_updates_table(mock_job_service, mock_disp
         blob_name="bad_file.pdf",
         error_msg="Search Service Timeout"
     )
+
+
+@patch("services.dispatcher.SearchService")
+@patch("services.dispatcher.BlobService")
+@patch("services.dispatcher.JobService")
+def test_staging_is_kept_until_indexing_succeeds(MockJobService, MockBlobService, MockSearchService):
+    """
+    A failure after the copy must leave the staging blob in place, otherwise the
+    redelivery has nothing to copy and the message can only reach the poison
+    queue. Observed live on 2026-09-09: BlobNotFound on every retry.
+    """
+    dispatcher = EventDispatcher()
+    dispatcher.job_service.get_job_status.return_value = None
+    dispatcher.search_service.wait_for_indexer.side_effect = RuntimeError("indexer failed")
+
+    event = QueueMessage(
+        job_id="job-retry",
+        event_type=EventType.CREATE,
+        blob_name="target.pdf",
+        document_id="doc-retry",
+        source_blob_path="f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/target.pdf",
+    )
+
+    with pytest.raises(RuntimeError):
+        dispatcher.dispatch(event)
+
+    dispatcher.blob_service.copy_from_staging.assert_called_once()
+    dispatcher.blob_service.delete_staging_blob.assert_not_called()
+
+
+@patch("services.dispatcher.SearchService")
+@patch("services.dispatcher.BlobService")
+@patch("services.dispatcher.JobService")
+def test_staging_is_cleaned_up_after_success(MockJobService, MockBlobService, MockSearchService):
+    dispatcher = EventDispatcher()
+    dispatcher.job_service.get_job_status.return_value = None
+
+    event = QueueMessage(
+        job_id="job-clean",
+        event_type=EventType.CREATE,
+        blob_name="target.pdf",
+        document_id="doc-clean",
+        source_blob_path="f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/target.pdf",
+    )
+    dispatcher.dispatch(event)
+
+    dispatcher.blob_service.delete_staging_blob.assert_called_once_with(
+        "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/target.pdf"
+    )
+
+
+def test_indexer_status_is_read_from_the_sdk_enum():
+    """
+    str(IndexerExecutionStatus.IN_PROGRESS) is 'IndexerExecutionStatus.IN_PROGRESS',
+    not 'inProgress'. Comparing the raw string meant a still-running indexer was
+    reported as a failure - and a successful one would have been too.
+    """
+    from enum import Enum
+
+    from services.search_service import SearchService
+
+    class IndexerExecutionStatus(str, Enum):
+        IN_PROGRESS = "inProgress"
+        SUCCESS = "success"
+        TRANSIENT_FAILURE = "transientFailure"
+
+    normalize = SearchService._normalize_status
+
+    assert normalize(IndexerExecutionStatus.IN_PROGRESS) == "inprogress"
+    assert normalize(IndexerExecutionStatus.SUCCESS) == "success"
+    assert normalize(IndexerExecutionStatus.TRANSIENT_FAILURE) == "transientfailure"
+    assert normalize("inProgress") == "inprogress"
+    assert normalize("success") == "success"
+
+
+def test_job_status_is_persisted_as_its_value():
+    """
+    model_dump() hands the Tables SDK the enum member, which it stringifies to
+    'JobStatus.FAILED'. The SPA polls for 'FAILED', and get_job_status() parses
+    the same field back into the enum.
+    """
+    from models.job_entity import JobEntity, JobStatus
+
+    entity = JobEntity(
+        RowKey="job-1",
+        document_id="doc-1",
+        blob_name="a.pdf",
+        status=JobStatus.FAILED,
+    )
+
+    dumped = entity.model_dump(mode="json", exclude_none=True)
+
+    assert dumped["status"] == "FAILED"
+    assert JobStatus(dumped["status"]) is JobStatus.FAILED

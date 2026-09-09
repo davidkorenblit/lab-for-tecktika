@@ -39,7 +39,11 @@ class JobService:
                 status=status,
                 error_message=error_msg
             )
-            client.upsert_entity(entity=job.model_dump(exclude_none=True))
+            # mode="json" so the status is written as "FAILED" rather than the
+            # enum member, which the Tables SDK stringifies to
+            # "JobStatus.FAILED". That value is what the SPA polls on, and it
+            # also broke this service's own get_job_status() idempotency read.
+            client.upsert_entity(entity=job.model_dump(mode="json", exclude_none=True))
             logging.info(f"Table Storage updated: [{status}] for Job ID: {job_id} (Doc ID: {document_id})")
         except Exception as err:
             logging.error(f"Failed to update Table Storage for Job ID {job_id}: {err}")

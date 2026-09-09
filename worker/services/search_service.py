@@ -48,6 +48,26 @@ class SearchService:
             logging.error(f"Failed to trigger Azure AI Search Indexer '{self.indexer_name}': {err}")
             raise err
 
+    @staticmethod
+    def _normalize_status(value) -> str:
+        """
+        Reduces an indexer status to a bare lowercase word.
+
+        The SDK hands back an IndexerExecutionStatus enum, and str() on it
+        yields 'IndexerExecutionStatus.IN_PROGRESS' - not 'inProgress'. The
+        previous comparison against ('inprogress', 'running') therefore never
+        matched, so a run that was simply still going was reported as a
+        failure, and even a successful run would have been, since the success
+        comparison had the same flaw.
+        """
+        raw = getattr(value, "value", value)
+        text = str(raw)
+
+        if "." in text:
+            text = text.rsplit(".", 1)[-1]
+
+        return text.replace("_", "").replace("-", "").lower()
+
     def wait_for_indexer(
         self,
         timeout_seconds: Optional[int] = None,
@@ -68,9 +88,14 @@ class SearchService:
             status = client.get_indexer_status(self.indexer_name)
             last = getattr(status, "last_result", None)
 
-            if not last or str(last.status).lower() in ("inprogress", "running"):
+            if not last:
                 continue
-            if str(last.status).lower() == "success":
+
+            state = self._normalize_status(last.status)
+
+            if state in ("inprogress", "running", "reset"):
+                continue
+            if state == "success":
                 logging.info(f"Indexer '{self.indexer_name}' completed successfully.")
                 return True
 

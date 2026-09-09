@@ -1,4 +1,6 @@
 import logging
+from typing import Optional
+
 from models.queue_message import QueueMessage, EventType
 from models.job_entity import JobStatus
 from services.job_service import JobService
@@ -38,6 +40,8 @@ class EventDispatcher:
                 return
 
         # 3. If source_blob_path provided, copy from staging to documents container
+        staging_path: Optional[str] = None
+
         if getattr(event, "source_blob_path", None) and event.event_type in (EventType.CREATE, EventType.UPDATE):
             logging.info(f"Copying staging blob '{event.source_blob_path}' to documents '{event.blob_name}'")
             self.blob_service.copy_from_staging(
@@ -45,12 +49,19 @@ class EventDispatcher:
                 target_blob_name=event.blob_name,
                 document_id=event.document_id,
             )
-            # Clean up staging blob after successful copy
-            self.blob_service.delete_staging_blob(event.source_blob_path)
+            staging_path = event.source_blob_path
 
         # 4. Handle Indexing (CREATE / UPDATE)
         if event.event_type in (EventType.CREATE, EventType.UPDATE):
             self._handle_index(event)
+
+            # Staging is only cleaned up once the job as a whole has succeeded.
+            # Deleting straight after the copy meant that any later failure -
+            # indexing, most obviously - left a retry with no source to copy
+            # from, so every redelivery died on BlobNotFound and the message
+            # could only ever reach the poison queue.
+            if staging_path:
+                self.blob_service.delete_staging_blob(staging_path)
 
         # 5. Handle Surgical Deletion (DELETE)
         elif event.event_type == EventType.DELETE:
