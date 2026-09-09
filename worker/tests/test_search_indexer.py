@@ -55,9 +55,23 @@ def test_search_pipeline_setup(MockCredential, MockIndexClient, MockIndexerClien
     mock_indexer_client.create_or_update_skillset.assert_called_once()
     skillset_arg = mock_indexer_client.create_or_update_skillset.call_args[0][0]
     assert skillset_arg.name == service.skillset_name
-    assert len(skillset_arg.skills) == 2
-    assert skillset_arg.skills[0].text_split_mode == "pages"
-    assert skillset_arg.skills[1].deployment_name == service.embedding_deployment
+    assert len(skillset_arg.skills) == 3
+
+    layout_skill, split_skill, embedding_skill = skillset_arg.skills
+
+    # Document Intelligence layout extraction runs first, so reading order
+    # (RTL included) comes from the layout-aware skill instead of the
+    # default OCR/content cracking.
+    assert layout_skill.odata_type == "#Microsoft.Skills.Util.DocumentIntelligenceLayoutSkill"
+    assert layout_skill.inputs[0].source == "/document/file_data"
+    assert layout_skill.outputs[0].target_name == "layout_content"
+
+    # SplitSkill must consume the layout skill's output, not raw content -
+    # otherwise the layout extraction is wired in but never actually used.
+    assert split_skill.text_split_mode == "pages"
+    assert split_skill.inputs[0].source == "/document/layout_content"
+
+    assert embedding_skill.deployment_name == service.embedding_deployment
     proj = getattr(skillset_arg, "index_projection", None) or getattr(skillset_arg, "index_projections", None)
     assert proj is not None
     assert len(proj.selectors) == 1

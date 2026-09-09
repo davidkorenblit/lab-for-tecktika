@@ -153,7 +153,9 @@ def test_dispatcher_delete_flow(MockJobService, MockBlobService, MockSearchServi
     dispatcher.dispatch(event)
 
     dispatcher.job_service.mark_running.assert_called_once_with("job-3", "doc-1", "file.pdf")
-    dispatcher.search_service.delete_document_chunks.assert_called_once_with("doc-1")
+    dispatcher.search_service.delete_document_chunks.assert_called_once_with(
+        "doc-1", file_name="file.pdf"
+    )
     dispatcher.job_service.mark_succeeded.assert_called_once_with("job-3", "doc-1", "file.pdf")
 
 
