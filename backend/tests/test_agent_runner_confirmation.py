@@ -131,7 +131,7 @@ def test_replace_tool_uses_trusted_staged_attachment() -> None:
             stream_agent(
                 "Replace Q3-report.pdf with the attached file",
                 requested_by="conv_123",
-                source_blob_path="staging/f_1.pdf",
+                source_blob_path="f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/report.pdf",
             )
         )
 
@@ -153,7 +153,7 @@ def test_replace_tool_uses_trusted_staged_attachment() -> None:
     assert call["file_name"] == "Q3-report.pdf"
     assert call["document_id"] == "doc_123"
     assert call["requested_by"] == "conv_123"
-    assert call["source_blob_path"] == "staging/f_1.pdf"
+    assert call["source_blob_path"] == "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/report.pdf"
 
 
 def test_stream_agent_sends_previous_turns_to_model() -> None:

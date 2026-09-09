@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.core.validation import validate_file_name
 
 
 class AddDocumentArgs(BaseModel):
@@ -10,6 +12,12 @@ class AddDocumentArgs(BaseModel):
         description="Exact name of the attached document to add",
     )
 
+    @field_validator("file_name")
+    @classmethod
+    def _check_file_name(cls, value: str) -> str:
+        return validate_file_name(value)
+
+
 
 class ReplaceDocumentArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -20,6 +28,12 @@ class ReplaceDocumentArgs(BaseModel):
         description="Exact name of the existing document to replace",
     )
 
+    @field_validator("file_name")
+    @classmethod
+    def _check_file_name(cls, value: str) -> str:
+        return validate_file_name(value)
+
+
 
 class DeleteDocumentArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -29,6 +43,12 @@ class DeleteDocumentArgs(BaseModel):
         min_length=1,
         description="Exact name of the document to delete",
     )
+
+    @field_validator("file_name")
+    @classmethod
+    def _check_file_name(cls, value: str) -> str:
+        return validate_file_name(value)
+
 
 
 class SearchDocumentsArgs(BaseModel):

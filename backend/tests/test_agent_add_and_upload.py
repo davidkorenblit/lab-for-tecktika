@@ -37,7 +37,7 @@ def test_add_document_creates_job_from_trusted_attachment() -> None:
             stream_agent(
                 "add this contract",
                 requested_by="conv_123",
-                source_blob_path="f_1/contract.pdf",
+                source_blob_path="f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/contract.pdf",
             )
         )
 
@@ -48,7 +48,7 @@ def test_add_document_creates_job_from_trusted_attachment() -> None:
     assert events[0].job.file_name == "contract.pdf"
 
     kwargs = create_job.call_args.kwargs
-    assert kwargs["source_blob_path"] == "f_1/contract.pdf"
+    assert kwargs["source_blob_path"] == "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/contract.pdf"
     assert kwargs["file_name"] == "contract.pdf"
 
 
@@ -81,7 +81,7 @@ def test_chat_stream_emits_job_event() -> None:
                         "fileId": "f_1",
                         "fileName": "contract.pdf",
                         "size": 100,
-                        "blobPath": "f_1/contract.pdf",
+                        "blobPath": "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/contract.pdf",
                     }
                 ],
             },
@@ -101,7 +101,7 @@ def test_upload_url_endpoint() -> None:
         return_value={
             "uploadUrl": "https://storage.example/upload?sas=test",
             "fileId": "f_1",
-            "blobPath": "f_1/contract.pdf",
+            "blobPath": "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/contract.pdf",
             "expiresAt": "2026-09-07T02:00:00+00:00",
         },
     ):
@@ -117,7 +117,7 @@ def test_upload_url_endpoint() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["fileId"] == "f_1"
-    assert body["blobPath"] == "f_1/contract.pdf"
+    assert body["blobPath"] == "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/contract.pdf"
     assert body["uploadUrl"].startswith("https://")
 
 
@@ -228,7 +228,7 @@ def test_add_existing_document_does_not_create_job() -> None:
                 stream_agent(
                     "add this contract",
                     requested_by="conv_123",
-                    source_blob_path="f_1/contract.pdf",
+                    source_blob_path="f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/contract.pdf",
                 )
             )
         except ValueError as exc:

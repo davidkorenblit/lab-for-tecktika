@@ -36,7 +36,10 @@ def test_chat_message_calls_agent() -> None:
     }
 
     mock_run_agent.assert_called_once_with(
-        "What is the rent?", history=[]
+        "What is the rent?",
+        history=[],
+        source_blob_path=None,
+        attachment_file_name=None,
     )
 
 
@@ -310,7 +313,7 @@ def test_stream_history_preserves_message_metadata() -> None:
         "fileId": "f_1",
         "fileName": "contract.pdf",
         "size": 100,
-        "blobPath": "staging/f_1.pdf",
+        "blobPath": "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/report.pdf",
     }
     citation = Citation(id="chunk_1", fileName="contract.pdf")
     confirmation = ConfirmationEvent(

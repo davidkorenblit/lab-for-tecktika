@@ -46,7 +46,7 @@ def test_message_metadata_survives_persistence(
         fileId="file_1",
         fileName="contract.pdf",
         size=1234,
-        blobPath="staging/file_1.pdf",
+        blobPath="f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/file_1.pdf",
     )
     citation = Citation(
         id="chunk_1",

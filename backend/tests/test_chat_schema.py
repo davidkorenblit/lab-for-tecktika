@@ -11,7 +11,7 @@ def test_chat_message_request_accepts_frontend_contract() -> None:
                 "fileId": "f_1",
                 "fileName": "vendor-2025.pdf",
                 "size": 52428800,
-                "blobPath": "staging/f_1.pdf",
+                "blobPath": "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/report.pdf",
             }
         ],
     }
@@ -24,7 +24,7 @@ def test_chat_message_request_accepts_frontend_contract() -> None:
     assert len(request.attachments) == 1
     assert request.attachments[0].file_id == "f_1"
     assert request.attachments[0].file_name == "vendor-2025.pdf"
-    assert request.attachments[0].blob_path == "staging/f_1.pdf"
+    assert request.attachments[0].blob_path == "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/report.pdf"
 
 
 def test_chat_history_response_accepts_frontend_contract() -> None:
@@ -42,7 +42,7 @@ def test_chat_history_response_accepts_frontend_contract() -> None:
                         "fileId": "f_1",
                         "fileName": "contract.pdf",
                         "size": 100,
-                        "blobPath": "staging/f_1.pdf",
+                        "blobPath": "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/report.pdf",
                     }
                 ],
             },

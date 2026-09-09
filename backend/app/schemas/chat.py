@@ -1,5 +1,9 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.validation import (
+    validate_file_name,
+    validate_staged_blob_path,
+)
 from app.schemas.confirmation import ConfirmationEvent
 
 
@@ -13,6 +17,18 @@ class MessageAttachment(BaseModel):
     file_name: str = Field(alias="fileName", min_length=1)
     size: int = Field(ge=0)
     blob_path: str = Field(alias="blobPath", min_length=1)
+
+    # Both of these are echoed back by the client and then reach the model and
+    # Blob Storage, so they are validated at the edge rather than at each use.
+    @field_validator("file_name")
+    @classmethod
+    def _check_file_name(cls, value: str) -> str:
+        return validate_file_name(value)
+
+    @field_validator("blob_path")
+    @classmethod
+    def _check_blob_path(cls, value: str) -> str:
+        return validate_staged_blob_path(value)
 
 
 class ChatMessageRequest(BaseModel):
