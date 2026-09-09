@@ -23,9 +23,18 @@ param chatModel object = {
   // 03/31/2026". gpt-4.1-mini has no quota in swedencentral in any Standard
   // bucket. gpt-5-mini does, is current, and is far cheaper than gpt-4o.
   //
-  // DataZoneStandard rather than GlobalStandard: 300K TPM is ample here, and
-  // it keeps inference inside the EU rather than routing it anywhere.
-  capacity: 300
+  // DataZoneStandard rather than GlobalStandard: it keeps inference inside the
+  // EU rather than routing it anywhere.
+  //
+  // Deliberately half the 300K quota, not all of it. CognitiveServices
+  // preflight validates a redeploy as if the deployment were new: it asks for
+  // the full target capacity against what is *unallocated*. Sitting at the
+  // quota ceiling therefore makes the template deploy exactly once and fail
+  // every time after with InsufficientQuota ("require 300 new capacity ...
+  // available capacity 0"). Leaving half free keeps the deploy repeatable,
+  // which brief 3.2 requires. 150K TPM is still fifteen times the capacity
+  // this workload started on.
+  capacity: 150
 }
 
 @description('Embedding model deployment used for indexing and query-time vectorization. text-embedding-3-small only supports GlobalStandard/DataZoneStandard (not plain Standard) as a deployment SKU; GlobalStandard has ample default quota (1000K TPM as of writing) even on fresh subscriptions.')
