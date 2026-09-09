@@ -27,6 +27,7 @@ from azure.search.documents.indexes.models import (
     SearchIndexerIndexProjectionSelector,
     SearchIndexerIndexProjectionsParameters,
     IndexProjectionMode,
+    DocumentIntelligenceLayoutSkill,
 )
 
 from config import settings
@@ -189,6 +190,19 @@ class SearchPipelineSetupService:
         """
         logging.info(f"Setting up Skillset: '{self.skillset_name}'...")
 
+        # Document Intelligence Layout Skill for layout-aware reading order, table preservation, and clean OCR
+        layout_skill = DocumentIntelligenceLayoutSkill(
+            name="document-intelligence-layout-skill",
+            description="Extracts layout and reading-order aware text using Azure AI Document Intelligence",
+            context="/document",
+            inputs=[
+                InputFieldMappingEntry(name="file_data", source="/document/file_data"),
+            ],
+            outputs=[
+                OutputFieldMappingEntry(name="layoutText", target_name="layout_content"),
+            ],
+        )
+
         split_skill = SplitSkill(
             name="split-skill",
             description="Splits document content into pages with overlap",
@@ -197,7 +211,7 @@ class SearchPipelineSetupService:
             maximum_page_length=2000,
             page_overlap_length=500,
             inputs=[
-                InputFieldMappingEntry(name="text", source="/document/content"),
+                InputFieldMappingEntry(name="text", source="/document/layout_content"),
             ],
             outputs=[
                 OutputFieldMappingEntry(name="textItems", target_name="pages"),
@@ -248,8 +262,8 @@ class SearchPipelineSetupService:
 
         skillset = SearchIndexerSkillset(
             name=self.skillset_name,
-            description="Skillset for PDF page splitting and OpenAI vector embedding",
-            skills=[split_skill, embedding_skill],
+            description="Skillset for Document Intelligence extraction, page splitting and OpenAI vector embedding",
+            skills=[layout_skill, split_skill, embedding_skill],
             index_projection=index_projection,
         )
 
@@ -270,6 +284,7 @@ class SearchPipelineSetupService:
             configuration={
                 "dataToExtract": "contentAndMetadata",
                 "parsingMode": "default",
+                "allowSkillsetToReadFileData": True,
             }
         )
 

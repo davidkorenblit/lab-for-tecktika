@@ -73,8 +73,8 @@ class EventDispatcher:
         """
         try:
             if event.event_type == EventType.UPDATE:
-                logging.info(f"UPDATE event detected: purging old chunks for Doc ID: {event.document_id}")
-                self.search_service.delete_document_chunks(event.document_id)
+                logging.info(f"UPDATE event detected: purging old chunks for Doc ID: {event.document_id}, File: {event.blob_name}")
+                self.search_service.delete_document_chunks(event.document_id, file_name=event.blob_name)
 
             self.search_service.wait_for_indexer()
             self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
@@ -89,7 +89,7 @@ class EventDispatcher:
         Executes surgical deletion of all chunks for Document ID, removes blob from storage, and updates status to SUCCEEDED.
         """
         try:
-            self.search_service.delete_document_chunks(event.document_id)
+            self.search_service.delete_document_chunks(event.document_id, file_name=event.blob_name)
             self.blob_service.delete_blob(event.blob_name)
             self.job_service.mark_succeeded(event.job_id, event.document_id, event.blob_name)
             logging.info(f"Surgical deletion completed successfully for Job ID: {event.job_id}, Doc ID: {event.document_id}")

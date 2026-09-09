@@ -147,15 +147,15 @@ export interface UploadUrlResponse {
   expiresAt?: string;
 }
 
-export type AttachmentPhase = 'requesting-url' | 'uploading' | 'ready' | 'error' | 'cancelled';
+export type AttachmentPhase = 'selected' | 'requesting-url' | 'uploading' | 'ready' | 'error' | 'cancelled';
 
 /**
- * A file the user has attached to the composer. The bytes go to storage
- * immediately so the send is instant, but nothing happens to the library until
- * the message is sent and the agent decides what the file is for.
+ * A file the user has attached to the composer. Stored locally until Send is clicked,
+ * at which point it is staged to storage before the message turn executes.
  */
 export interface PendingAttachment {
   id: string;
+  file?: File;
   fileName: string;
   size: number;
   phase: AttachmentPhase;

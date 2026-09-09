@@ -349,10 +349,29 @@ def stream_agent(
             existing_documents = resolve_document(file_name)
 
             if existing_documents:
-                raise ValueError(
-                    f"Document '{file_name}' already exists. "
-                    "Replacing an existing document requires explicit confirmation."
+                # Instead of failing, pivot to a replace confirmation.
+                # The user attached a file with the same name as one already
+                # in the library — the intent is almost certainly to update it.
+                confirmation = _prepare_confirmation(
+                    tool_name="replace_document",
+                    arguments=arguments,
+                    requested_by=requested_by,
+                    source_blob_path=source_blob_path,
                 )
+
+                yield AgentEvent(
+                    type="confirmation",
+                    confirmation=confirmation,
+                )
+
+                yield AgentEvent(
+                    type="delta",
+                    delta=(
+                        f"הקובץ '{file_name}' כבר קיים במערכת. "
+                        "שלחתי בקשת אישור להחלפה — אשר כדי לעדכן."
+                    ),
+                )
+                return
 
             job = create_job_and_enqueue(
                 operation=JobOperation.ADD,
