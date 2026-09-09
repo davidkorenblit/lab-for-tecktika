@@ -47,6 +47,9 @@ param chatDeploymentName string
 @description('Azure OpenAI embedding deployment name.')
 param embeddingDeploymentName string
 
+@description('Document Intelligence (multi-service Cognitive Services) endpoint, used by the worker to attach DocumentIntelligenceLayoutSkill billing to the search skillset.')
+param documentIntelligenceEndpoint string
+
 @description('Placeholder container image for the backend Container App. CI/CD replaces this with the built image after the first deploy.')
 param backendContainerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 
@@ -180,6 +183,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AZURE_SEARCH_ENDPOINT', value: searchEndpoint }
         { name: 'AZURE_OPENAI_ENDPOINT', value: openAiEndpoint }
         { name: 'OPENAI_EMBEDDING_DEPLOYMENT', value: embeddingDeploymentName }
+        { name: 'DOCUMENT_INTELLIGENCE_ENDPOINT', value: documentIntelligenceEndpoint }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
       ]
     }

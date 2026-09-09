@@ -7,6 +7,9 @@ param openAiAccountName string
 @description('Name of the Azure AI Search service.')
 param searchServiceName string
 
+@description('Name of the Document Intelligence (multi-service Cognitive Services) account.')
+param documentIntelligenceAccountName string
+
 @description('Principal ID of the backend Container App system-assigned identity.')
 param backendPrincipalId string
 
@@ -22,6 +25,7 @@ var roleIds = {
   storageQueueDataContributor: '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
   storageTableDataContributor: '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
   cognitiveServicesOpenAiUser: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+  cognitiveServicesUser: 'a97b65f3-24c7-4388-baec-2e87135dc908'
   searchIndexDataContributor: '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
   searchServiceContributor: '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
 }
@@ -36,6 +40,10 @@ resource openAiAccount 'Microsoft.CognitiveServices/accounts@2024-10-01' existin
 
 resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' existing = {
   name: searchServiceName
+}
+
+resource documentIntelligenceAccount 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = {
+  name: documentIntelligenceAccountName
 }
 
 // --- Backend (Container App): reads/writes documents, enqueues jobs, tracks status, queries the index, calls the chat model. ---
@@ -165,6 +173,19 @@ resource searchOpenAi 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: openAiAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.cognitiveServicesOpenAiUser)
+    principalId: searchServicePrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Lets the skillset's DocumentIntelligenceLayoutSkill bill against this
+// account via the search service's own identity (AIServicesAccountIdentity),
+// instead of a stored API key.
+resource searchDocumentIntelligence 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(documentIntelligenceAccount.id, searchServicePrincipalId, roleIds.cognitiveServicesUser)
+  scope: documentIntelligenceAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleIds.cognitiveServicesUser)
     principalId: searchServicePrincipalId
     principalType: 'ServicePrincipal'
   }

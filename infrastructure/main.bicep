@@ -101,6 +101,15 @@ module openAi 'modules/openai.bicep' = {
   }
 }
 
+module documentIntelligence 'modules/document_intelligence.bicep' = {
+  name: 'documentIntelligence'
+  params: {
+    baseName: baseName
+    location: location
+    tags: tags
+  }
+}
+
 module compute 'modules/compute.bicep' = {
   name: 'compute'
   params: {
@@ -120,6 +129,7 @@ module compute 'modules/compute.bicep' = {
     openAiEndpoint: openAi.outputs.openAiEndpoint
     chatDeploymentName: openAi.outputs.chatDeploymentName
     embeddingDeploymentName: openAi.outputs.embeddingDeploymentName
+    documentIntelligenceEndpoint: documentIntelligence.outputs.endpoint
     backendContainerImage: backendContainerImage
     backendCorsAllowedOrigins: backendCorsAllowedOrigins
     entraTenantId: entraTenantId
@@ -133,6 +143,7 @@ module roleAssignments 'modules/role_assignments.bicep' = {
     storageAccountName: storage.outputs.storageAccountName
     openAiAccountName: openAi.outputs.openAiAccountName
     searchServiceName: aiSearch.outputs.searchServiceName
+    documentIntelligenceAccountName: documentIntelligence.outputs.accountName
     backendPrincipalId: compute.outputs.backendAppPrincipalId
     workerPrincipalId: compute.outputs.functionAppPrincipalId
     searchServicePrincipalId: aiSearch.outputs.searchServicePrincipalId
@@ -150,6 +161,8 @@ output searchServiceName string = aiSearch.outputs.searchServiceName
 output searchEndpoint string = aiSearch.outputs.searchEndpoint
 output openAiAccountName string = openAi.outputs.openAiAccountName
 output openAiEndpoint string = openAi.outputs.openAiEndpoint
+output documentIntelligenceAccountName string = documentIntelligence.outputs.accountName
+output documentIntelligenceEndpoint string = documentIntelligence.outputs.endpoint
 output chatDeploymentName string = openAi.outputs.chatDeploymentName
 output embeddingDeploymentName string = openAi.outputs.embeddingDeploymentName
 output backendAppName string = compute.outputs.backendAppName
