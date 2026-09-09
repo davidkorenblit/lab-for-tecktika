@@ -13,7 +13,10 @@ param chatModel object = {
   modelName: 'gpt-4o'
   modelVersion: '2024-11-20'
   skuName: 'Standard'
-  capacity: 10
+  // 10 was one burst of chat turns away from 429. The regional quota for
+  // OpenAI.Standard.gpt-4o is 50 and this deployment is its only consumer;
+  // 40 leaves headroom for a second deployment without another quota request.
+  capacity: 40
 }
 
 @description('Embedding model deployment used for indexing and query-time vectorization. text-embedding-3-small only supports GlobalStandard/DataZoneStandard (not plain Standard) as a deployment SKU; GlobalStandard has ample default quota (1000K TPM as of writing) even on fresh subscriptions.')
