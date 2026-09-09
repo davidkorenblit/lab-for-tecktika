@@ -22,12 +22,14 @@ from azure.search.documents.indexes.models import (
     AzureOpenAIEmbeddingSkill,
     SearchIndexer,
     FieldMapping,
+    FieldMappingFunction,
     IndexingParameters,
     SearchIndexerIndexProjection,
     SearchIndexerIndexProjectionSelector,
     SearchIndexerIndexProjectionsParameters,
     IndexProjectionMode,
     DocumentIntelligenceLayoutSkill,
+    AIServicesAccountIdentity,
 )
 
 from config import settings
@@ -55,6 +57,7 @@ class SearchPipelineSetupService:
         embedding_deployment: Optional[str] = None,
         storage_account_name: Optional[str] = None,
         blob_container_name: Optional[str] = None,
+        document_intelligence_endpoint: Optional[str] = None,
     ):
         self.endpoint = endpoint or settings.AZURE_SEARCH_ENDPOINT
         self.index_name = index_name or settings.SEARCH_INDEX_NAME
@@ -65,6 +68,9 @@ class SearchPipelineSetupService:
         self.embedding_deployment = embedding_deployment or settings.OPENAI_EMBEDDING_DEPLOYMENT
         self.storage_account_name = storage_account_name or settings.STORAGE_ACCOUNT_NAME
         self.blob_container_name = blob_container_name or settings.BLOB_CONTAINER_NAME
+        self.document_intelligence_endpoint = (
+            document_intelligence_endpoint or settings.DOCUMENT_INTELLIGENCE_ENDPOINT
+        )
 
         self.credential = DefaultAzureCredential()
         self.index_client = SearchIndexClient(endpoint=self.endpoint, credential=self.credential)
@@ -265,6 +271,16 @@ class SearchPipelineSetupService:
             description="Skillset for Document Intelligence extraction, page splitting and OpenAI vector embedding",
             skills=[layout_skill, split_skill, embedding_skill],
             index_projection=index_projection,
+            # DocumentIntelligenceLayoutSkill only has a small daily free
+            # quota; beyond that (or, apparently, immediately for some
+            # documents) it silently produces no output rather than raising a
+            # loud error, which starves split_skill of its input and kills
+            # indexing outright. This attaches billing via the search
+            # service's own managed identity - no key needed - the same way
+            # AzureOpenAIEmbeddingSkill already authenticates above.
+            cognitive_services_account=AIServicesAccountIdentity(
+                subdomain_url=self.document_intelligence_endpoint,
+            ),
         )
 
         result = self.indexer_client.create_or_update_skillset(skillset)
@@ -294,7 +310,24 @@ class SearchPipelineSetupService:
             data_source_name=self.datasource_name,
             target_index_name=self.index_name,
             skillset_name=self.skillset_name,
-            field_mappings=[],
+            # Without an explicit mapping, the indexer's implicit default keys
+            # the (skipped) parent document off base64(metadata_storage_path)
+            # - the full blob URL. Azure Search caps document keys at 1024
+            # characters, and non-ASCII file names blow past that fast: each
+            # Hebrew character becomes ~6 characters once percent-encoded into
+            # the URL, then base64 inflates it again. A ~200-character Hebrew
+            # file name was enough to break indexing outright ("Document key
+            # cannot be longer than 1024 characters"). metadata_storage_name
+            # is just the blob name - unique within the container by
+            # definition, never percent-encoded, and orders of magnitude
+            # shorter for the same file.
+            field_mappings=[
+                FieldMapping(
+                    source_field_name="metadata_storage_name",
+                    target_field_name="id",
+                    mapping_function=FieldMappingFunction(name="base64Encode"),
+                )
+            ],
             output_field_mappings=[],
             parameters=parameters,
         )

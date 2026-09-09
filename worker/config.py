@@ -41,6 +41,10 @@ class Settings:
         "AZURE_OPENAI_ENDPOINT",
         "https://aoai-ragpoc-dev-qelri355piqlq.openai.azure.com/"
     )
+    DOCUMENT_INTELLIGENCE_ENDPOINT: str = os.getenv(
+        "DOCUMENT_INTELLIGENCE_ENDPOINT",
+        "https://di-ragpoc-dev-qelri355piqlq.cognitiveservices.azure.com/"
+    )
 
     # Search Pipeline Names (supports both backend and worker env naming)
     SEARCH_INDEX_NAME: str = (

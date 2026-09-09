@@ -71,6 +71,14 @@ def test_search_pipeline_setup(MockCredential, MockIndexClient, MockIndexerClien
     assert split_skill.text_split_mode == "pages"
     assert split_skill.inputs[0].source == "/document/layout_content"
 
+    # Without billing attached, DocumentIntelligenceLayoutSkill silently
+    # produces no output past its small free quota - identity-based, not a
+    # stored key, matching how every other service in this stack authenticates.
+    cognitive_services = skillset_arg.cognitive_services_account
+    assert cognitive_services is not None
+    assert cognitive_services.odata_type == "#Microsoft.Azure.Search.AIServicesByIdentity"
+    assert cognitive_services.subdomain_url == service.document_intelligence_endpoint
+
     assert embedding_skill.deployment_name == service.embedding_deployment
     proj = getattr(skillset_arg, "index_projection", None) or getattr(skillset_arg, "index_projections", None)
     assert proj is not None
@@ -92,3 +100,14 @@ def test_search_pipeline_setup(MockCredential, MockIndexClient, MockIndexerClien
     assert indexer_arg.target_index_name == service.index_name
     assert indexer_arg.skillset_name == service.skillset_name
     assert indexer_arg.output_field_mappings == []
+
+    # The key must not come from the implicit default (base64 of the full
+    # blob URL) - a long, non-ASCII file name percent-encodes far past
+    # Search's 1024-character key limit. metadata_storage_name (the blob
+    # name alone, never percent-encoded, unique within the container) keeps
+    # this bounded regardless of file name length or script.
+    assert len(indexer_arg.field_mappings) == 1
+    key_mapping = indexer_arg.field_mappings[0]
+    assert key_mapping.source_field_name == "metadata_storage_name"
+    assert key_mapping.target_field_name == "id"
+    assert key_mapping.mapping_function.name == "base64Encode"
