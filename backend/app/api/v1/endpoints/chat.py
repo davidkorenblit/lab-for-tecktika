@@ -246,18 +246,6 @@ def send_message(
         if pending:
             source_blob_path, attachment_file_name = pending
 
-    # If this message has no attachment, check whether a recent message in the
-    # same conversation carried one.  This lets the user say "upload this" or
-    # "what's in this file?" in a follow-up without re-attaching.  Only the
-    # most recent attachment is considered — going further back would be
-    # confusing — and only when the current turn is attachment-free.
-    if not source_blob_path and history:
-        for past_msg in reversed(history):
-            if past_msg.role == "user" and past_msg.attachments:
-                source_blob_path = past_msg.attachments[0].blob_path
-                attachment_file_name = past_msg.attachments[0].file_name
-                break
-
     if request.stream:
         return StreamingResponse(
             _sse_response(

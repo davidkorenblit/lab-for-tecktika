@@ -6,6 +6,7 @@ from app.agent.events import AgentEvent
 from app.agent.runner import stream_agent
 from app.main import app
 from app.core.config import settings
+from app.services.file_resolver import ResolvedDocument
 
 
 def test_add_document_creates_job_from_trusted_attachment() -> None:
@@ -200,7 +201,13 @@ def test_chat_stream_emits_citations_event() -> None:
     assert '"score":3.75' in response.text
 
 
-def test_add_existing_document_does_not_create_job() -> None:
+def test_add_existing_document_pivots_to_replace_confirmation() -> None:
+    """
+    add_document on a file name that already exists no longer hard-fails -
+    it pivots to a replace confirmation carrying the same staged attachment,
+    since the user's intent in that situation is almost certainly to update
+    the existing document rather than to be told "no".
+    """
     first_response = MagicMock()
     tool_call = MagicMock()
     tool_call.id = "call_add_existing"
@@ -208,7 +215,12 @@ def test_add_existing_document_does_not_create_job() -> None:
     tool_call.function.arguments = '{"file_name":"contract.pdf"}'
     first_response.choices[0].message.tool_calls = [tool_call]
 
-    existing_document = MagicMock()
+    existing_document = ResolvedDocument(
+        file_name="contract.pdf",
+        blob_name="contract.pdf",
+        document_id="doc_existing_1",
+        etag='"etag_existing"',
+    )
 
     with (
         patch(
@@ -222,21 +234,29 @@ def test_add_existing_document_does_not_create_job() -> None:
         patch(
             "app.agent.runner.create_job_and_enqueue",
         ) as create_job,
+        patch(
+            "app.agent.runner.confirmation_store.create",
+        ) as create_confirmation,
     ):
-        try:
-            list(
-                stream_agent(
-                    "add this contract",
-                    requested_by="conv_123",
-                    source_blob_path="f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/contract.pdf",
-                )
+        create_confirmation.return_value = MagicMock(
+            confirmation_id="cf_existing_1"
+        )
+
+        events = list(
+            stream_agent(
+                "add this contract",
+                requested_by="conv_123",
+                source_blob_path="f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/contract.pdf",
             )
-        except ValueError as exc:
-            assert "already exists" in str(exc)
-            assert "explicit confirmation" in str(exc)
-        else:
-            raise AssertionError(
-                "Existing document ADD should have been rejected"
-            )
+        )
 
     create_job.assert_not_called()
+
+    assert [event.type for event in events] == ["confirmation", "delta"]
+    assert events[0].confirmation is not None
+    assert events[0].confirmation.action == "replace"
+    assert events[0].confirmation.files == ["contract.pdf"]
+
+    create_confirmation.assert_called_once()
+    call = create_confirmation.call_args.kwargs
+    assert call["source_blob_path"] == "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/contract.pdf"
