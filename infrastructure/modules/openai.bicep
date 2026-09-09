@@ -7,19 +7,25 @@ param location string = resourceGroup().location
 @description('Tags applied to the account.')
 param tags object = {}
 
-@description('Chat model deployment. Standard (regional) SKU keeps inference in swedencentral, matching the data-residency posture the rest of the stack is built on; GlobalStandard would route outside the region.')
+@description('Chat model deployment. DataZoneStandard keeps inference inside the EU data zone - the closest available option to the regional posture the rest of the stack uses, since this model has no plain Standard quota here.')
 param chatModel object = {
-  deploymentName: 'gpt-4o-mini'
-  modelName: 'gpt-4o-mini'
-  modelVersion: '2024-07-18'
-  skuName: 'Standard'
-  // gpt-4o was the wrong model for this workload on both axes. A single RAG
-  // turn carries the retrieved chunks plus history, and on gpt-4o's regional
-  // Standard quota of 50K TPM that meant a 429 on the call that writes the
-  // answer - the failure users actually hit. gpt-4o-mini has its own quota
-  // bucket with 200K TPM available in this region, and costs roughly a
-  // sixteenth per input token.
-  capacity: 200
+  deploymentName: 'gpt-5-mini'
+  modelName: 'gpt-5-mini'
+  modelVersion: '2025-08-07'
+  skuName: 'DataZoneStandard'
+  // gpt-4o was the wrong model for this workload on both axes: a single RAG
+  // turn carries the retrieved chunks plus history, and its regional Standard
+  // quota of 50K TPM meant a 429 on the call that writes the answer - the
+  // failure users actually hit.
+  //
+  // gpt-4o-mini would have been the obvious cheap replacement, but its only
+  // version (2024-07-18) is refused at preflight: "has been deprecated since
+  // 03/31/2026". gpt-4.1-mini has no quota in swedencentral in any Standard
+  // bucket. gpt-5-mini does, is current, and is far cheaper than gpt-4o.
+  //
+  // DataZoneStandard rather than GlobalStandard: 300K TPM is ample here, and
+  // it keeps inference inside the EU rather than routing it anywhere.
+  capacity: 300
 }
 
 @description('Embedding model deployment used for indexing and query-time vectorization. text-embedding-3-small only supports GlobalStandard/DataZoneStandard (not plain Standard) as a deployment SKU; GlobalStandard has ample default quota (1000K TPM as of writing) even on fresh subscriptions.')

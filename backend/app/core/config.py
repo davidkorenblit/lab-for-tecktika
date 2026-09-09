@@ -34,8 +34,12 @@ class Settings(BaseSettings):
 
     # Azure OpenAI
     azure_openai_endpoint: str = "https://aoai-ragpoc-dev-qelri355piqlq.openai.azure.com/"
-    azure_openai_api_version: str = "2024-10-21"
-    openai_chat_deployment: str = "gpt-4o-mini"
+    # 2024-10-21 predates the gpt-5 family: a streamed request to it comes
+    # back with zero tool_call frames, so the agent silently loses its
+    # tools mid-stream. Verified directly against the deployment - the same
+    # request on 2025-04-01-preview streams tool calls correctly.
+    azure_openai_api_version: str = "2025-04-01-preview"
+    openai_chat_deployment: str = "gpt-5-mini"
     openai_embedding_deployment: str = "text-embedding-3-small"
     # Retries the OpenAI SDK performs on a 429 before giving up.
     openai_max_retries: int = 5
