@@ -103,27 +103,39 @@ class SearchService:
 
         raise TimeoutError(f"Indexer '{self.indexer_name}' timed out after {timeout} seconds.")
 
-    def delete_document_chunks(self, document_id: str) -> bool:
+    def delete_document_chunks(self, document_id: str, file_name: Optional[str] = None) -> bool:
         """
         Executes surgical deletion by locating all chunks where parentDocumentId eq document_id
-        and purging them from the search index.
+        or fileName eq file_name, and purging them from the search index.
         """
         try:
             client = self._get_search_client()
-            filter_query = f"parentDocumentId eq '{document_id}'"
-            
-            # Step 1: Locate all chunk IDs belonging to this parentDocumentId
+            escaped_doc_id = document_id.replace("'", "''") if document_id else ""
+            conditions = []
+            if escaped_doc_id:
+                conditions.append(f"parentDocumentId eq '{escaped_doc_id}'")
+            if file_name:
+                escaped_file_name = file_name.replace("'", "''")
+                conditions.append(f"fileName eq '{escaped_file_name}'")
+
+            if not conditions:
+                logging.warning("Neither document_id nor file_name provided for chunk deletion.")
+                return True
+
+            filter_query = " or ".join(conditions)
+
+            # Step 1: Locate all chunk IDs belonging to this document
             results = client.search(search_text="*", filter=filter_query, select=["id"])
             chunks_to_delete = [{"id": doc["id"]} for doc in results]
 
             if not chunks_to_delete:
-                logging.info(f"No chunks found for parentDocumentId: '{document_id}'")
+                logging.info(f"No chunks found matching: '{filter_query}'")
                 return True
 
             # Step 2: Perform bulk surgical deletion
             client.delete_documents(documents=chunks_to_delete)
-            logging.info(f"Surgically purged {len(chunks_to_delete)} chunks for Doc ID: '{document_id}'")
+            logging.info(f"Surgically purged {len(chunks_to_delete)} chunks matching '{filter_query}'")
             return True
         except Exception as err:
-            logging.error(f"Failed surgical deletion for Doc ID '{document_id}': {err}")
+            logging.error(f"Failed surgical deletion for Doc ID '{document_id}', file '{file_name}': {err}")
             raise err

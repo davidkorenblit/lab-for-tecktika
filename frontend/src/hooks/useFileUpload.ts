@@ -26,56 +26,103 @@ export function useFileUpload() {
     );
   }, []);
 
-  const attachFile = useCallback(
-    async (file: File) => {
-      const id = uid('attachment');
-      setAttachments((current) => [
-        ...current,
-        { id, fileName: file.name, size: file.size, phase: 'requesting-url', progress: 0 },
-      ]);
+  const attachFile = useCallback((file: File) => {
+    const id = uid('attachment');
+    setAttachments((current) => [
+      ...current,
+      { id, file, fileName: file.name, size: file.size, phase: 'selected', progress: 0 },
+    ]);
+    return id;
+  }, []);
+
+  const uploadSingle = useCallback(
+    async (item: PendingAttachment): Promise<MessageAttachment> => {
+      if (item.phase === 'ready' && item.fileId) {
+        return {
+          fileId: item.fileId,
+          fileName: item.fileName,
+          size: item.size,
+          blobPath: item.blobPath,
+        };
+      }
+
+      if (!item.file) {
+        throw new Error(`File content not found for ${item.fileName}`);
+      }
 
       const controller = new AbortController();
-      controllersRef.current.set(id, controller);
+      controllersRef.current.set(item.id, controller);
+      patch(item.id, { phase: 'requesting-url', progress: 0, error: undefined });
 
       try {
         const target = await requestUploadUrl({
-          fileName: file.name,
-          contentType: file.type || 'application/pdf',
-          size: file.size,
+          fileName: item.fileName,
+          contentType: item.file.type || 'application/pdf',
+          size: item.file.size,
         });
 
-        patch(id, { phase: 'uploading', progress: 0 });
+        patch(item.id, { phase: 'uploading', progress: 0 });
 
         await uploadToPresignedUrl({
           uploadUrl: target.uploadUrl,
-          file,
+          file: item.file,
           signal: controller.signal,
-          onProgress: (percent) => patch(id, { progress: percent }),
+          onProgress: (percent) => patch(item.id, { progress: percent }),
         });
 
-        patch(id, {
+        patch(item.id, {
           phase: 'ready',
           progress: 100,
           fileId: target.fileId,
           blobPath: target.blobPath,
         });
+
+        return {
+          fileId: target.fileId,
+          fileName: item.fileName,
+          size: item.size,
+          blobPath: target.blobPath,
+        };
       } catch (error) {
         if ((error as Error)?.name === 'AbortError') {
-          patch(id, { phase: 'cancelled' });
+          patch(item.id, { phase: 'cancelled' });
         } else {
-          patch(id, {
+          patch(item.id, {
             phase: 'error',
             error: error instanceof Error ? error.message : 'Upload failed',
           });
         }
+        throw error;
       } finally {
-        controllersRef.current.delete(id);
+        controllersRef.current.delete(item.id);
       }
-
-      return id;
     },
     [patch],
   );
+
+  const uploadPendingAttachments = useCallback(async (): Promise<MessageAttachment[]> => {
+    const currentList = attachments;
+    const results: MessageAttachment[] = [];
+
+    for (const item of currentList) {
+      if (item.phase === 'ready' && item.fileId) {
+        results.push({
+          fileId: item.fileId,
+          fileName: item.fileName,
+          size: item.size,
+          blobPath: item.blobPath,
+        });
+        continue;
+      }
+
+      if (item.phase === 'selected' || item.phase === 'error') {
+        const uploaded = await uploadSingle(item);
+        results.push(uploaded);
+      }
+    }
+
+    return results;
+  }, [attachments, uploadSingle]);
 
   const removeAttachment = useCallback((id: string) => {
     controllersRef.current.get(id)?.abort();
@@ -90,7 +137,13 @@ export function useFileUpload() {
     setAttachments([]);
   }, []);
 
-  return { attachments, attachFile, removeAttachment, clearAttachments };
+  return {
+    attachments,
+    attachFile,
+    uploadPendingAttachments,
+    removeAttachment,
+    clearAttachments,
+  };
 }
 
 /** Only staged files can be sent; anything still uploading or failed is dropped. */

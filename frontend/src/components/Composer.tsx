@@ -38,8 +38,10 @@ export function Composer({
   const staging = attachments.some(
     (item) => item.phase === 'requesting-url' || item.phase === 'uploading',
   );
-  const readyCount = attachments.filter((item) => item.phase === 'ready').length;
-  const canSend = Boolean(value.trim() || readyCount > 0) && !staging && !isStreaming;
+  const attachedCount = attachments.filter(
+    (item) => item.phase === 'ready' || item.phase === 'selected',
+  ).length;
+  const canSend = Boolean(value.trim() || attachedCount > 0) && !staging && !isStreaming;
 
   const submit = () => {
     if (!canSend) return;
@@ -205,9 +207,10 @@ function AttachmentChip({
           {fileName}
         </span>
         <span className={cx('block text-[10px]', failed ? 'text-danger' : 'text-ink-muted')}>
-          {phase === 'requesting-url' && 'Preparing…'}
+          {phase === 'selected' && `${formatBytes(size)} · Ready to send`}
+          {phase === 'requesting-url' && 'Preparing upload…'}
           {phase === 'uploading' && `Uploading ${progress}%`}
-          {phase === 'ready' && formatBytes(size)}
+          {phase === 'ready' && `${formatBytes(size)} · Ready`}
           {phase === 'cancelled' && 'Cancelled'}
           {phase === 'error' && (error ?? 'Upload failed')}
         </span>

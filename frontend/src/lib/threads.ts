@@ -1,6 +1,6 @@
 import { MAX_TRACKED_THREADS, THREAD_STORAGE_KEY } from '@/config';
 import { uid } from '@/lib/format';
-import { readSessionJson, writeSessionJson } from '@/lib/storage';
+import { readJson, readSessionJson, writeJson, writeSessionJson } from '@/lib/storage';
 
 /**
  * The list of conversations this browser knows about.
@@ -48,7 +48,9 @@ function emptyStore(): ThreadStore {
 }
 
 export function loadThreadStore(): ThreadStore {
-  const stored = readSessionJson<ThreadStore | null>(THREAD_STORAGE_KEY, null);
+  const stored =
+    readJson<ThreadStore | null>(THREAD_STORAGE_KEY, null) ??
+    readSessionJson<ThreadStore | null>(THREAD_STORAGE_KEY, null);
   if (stored && Array.isArray(stored.threads) && stored.threads.length > 0) {
     const threads = stored.threads.filter(
       (thread): thread is ThreadRecord => Boolean(thread) && typeof thread.threadId === 'string',
@@ -67,6 +69,7 @@ export function loadThreadStore(): ThreadStore {
 }
 
 export function saveThreadStore(store: ThreadStore): void {
+  writeJson(THREAD_STORAGE_KEY, store);
   writeSessionJson(THREAD_STORAGE_KEY, store);
 }
 
