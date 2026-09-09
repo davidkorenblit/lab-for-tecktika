@@ -71,7 +71,12 @@ def _build_messages(
                 "</attached_file_name>\n"
                 "If the user's message implies they want this file added, "
                 "indexed or processed, call the add_document tool with exactly "
-                "that file name. Do not ask the user to type the name again."
+                "that file name. Do not ask the user to type the name again.\n"
+                "An attached file is not searchable until it has been added to "
+                "the library. If the user asks about its contents and the "
+                "search returns nothing for it, do not reply that the "
+                "information does not exist - say the file is not in the "
+                "library yet and offer to add it."
             ),
         })
 

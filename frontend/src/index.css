@@ -32,6 +32,18 @@ html,
 body,
 #root {
   height: 100%;
+  /* Dynamic viewport height, so a mobile browser collapsing or expanding its
+     URL bar resizes the app instead of leaving the composer off-screen. */
+  height: 100dvh;
+}
+
+/* The message list is the only thing that scrolls. Without this the document
+   itself scrolls too, and the view can be dragged down past the composer to
+   empty space below it. */
+html,
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {

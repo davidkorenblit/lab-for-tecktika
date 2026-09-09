@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     azure_openai_api_version: str = "2024-10-21"
     openai_chat_deployment: str = "gpt-4o"
     openai_embedding_deployment: str = "text-embedding-3-small"
+    # Retries the OpenAI SDK performs on a 429 before giving up.
+    openai_max_retries: int = 5
 
     # Azure Storage
     azure_storage_account_name: str = "stragpocdevqelri355piqlq"

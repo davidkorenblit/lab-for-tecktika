@@ -58,5 +58,10 @@ def get_openai_client() -> AzureOpenAI:
         azure_endpoint=settings.azure_openai_endpoint,
         api_version=settings.azure_openai_api_version,
         azure_ad_token_provider=token_provider,
+        # The chat deployment is on a small Standard quota, so a burst of turns
+        # returns 429 rather than queueing. The SDK retries these with
+        # exponential backoff and honours Retry-After; the default of 2 was not
+        # enough to ride out a single user sending a few messages in a row.
+        max_retries=settings.openai_max_retries,
     )
 

@@ -1,9 +1,11 @@
 import json
+import logging
 from collections.abc import Iterable, Iterator
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from openai import RateLimitError
 
 from app.agent.events import AgentEvent
 from app.agent.runner import run_agent, stream_agent
@@ -12,6 +14,8 @@ from app.schemas.chat import ChatMessageRequest, Citation
 from app.schemas.confirmation import ConfirmationEvent
 from app.services.conversation_service import TableConversationStore
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -126,7 +130,26 @@ def _sse_response(
         yield "data: [DONE]\n\n"
         return
 
+    except RateLimitError:
+        # The chat deployment's quota is small enough that a few turns in a row
+        # exhaust it. The SDK has already retried with backoff by this point,
+        # so tell the user what actually happened instead of "request failed".
+        logger.warning("Azure OpenAI rate limit reached while streaming")
+        error_data = json.dumps(
+            {
+                "message": (
+                    "The model is at capacity right now. "
+                    "Wait a few seconds and send the message again."
+                )
+            },
+            separators=(",", ":"),
+        )
+        yield f"event: error\ndata: {error_data}\n\n"
+        yield "data: [DONE]\n\n"
+        return
+
     except Exception:
+        logger.exception("Agent stream failed")
         error_data = json.dumps(
             {"message": "Agent request failed"},
             separators=(",", ":"),
