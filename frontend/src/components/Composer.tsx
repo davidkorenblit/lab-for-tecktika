@@ -1,20 +1,14 @@
 import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { cx, formatBytes } from '@/lib/format';
-import { ConversationMenu } from './ConversationMenu';
-import type { ThreadRecord } from '@/lib/threads';
 import type { PendingAttachment } from '@/types';
 
 interface ComposerProps {
   isStreaming: boolean;
   attachments: PendingAttachment[];
-  threads: ThreadRecord[];
-  activeThreadId: string;
   onSend: (text: string) => void;
   onStop: () => void;
   onAttachFile: (file: File) => void;
   onRemoveAttachment: (id: string) => void;
-  onSelectThread: (threadId: string) => void;
-  onDeleteThread: (threadId: string) => void;
   onNewConversation: () => void;
 }
 
@@ -30,14 +24,10 @@ const MAX_FILE_BYTES = 500 * 1024 * 1024;
 export function Composer({
   isStreaming,
   attachments,
-  threads,
-  activeThreadId,
   onSend,
   onStop,
   onAttachFile,
   onRemoveAttachment,
-  onSelectThread,
-  onDeleteThread,
   onNewConversation,
 }: ComposerProps) {
   const [value, setValue] = useState('');
@@ -179,13 +169,13 @@ export function Composer({
             Enter to send · Shift+Enter for a new line
             {staging && ' · waiting for the upload to finish'}
           </span>
-          <ConversationMenu
-            threads={threads}
-            activeThreadId={activeThreadId}
-            onSelect={onSelectThread}
-            onDelete={onDeleteThread}
-            onNew={onNewConversation}
-          />
+          <button
+            type="button"
+            onClick={onNewConversation}
+            className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+          >
+            New conversation
+          </button>
         </div>
       </div>
     </div>

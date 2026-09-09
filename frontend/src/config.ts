@@ -37,11 +37,14 @@ export const UPLOAD_SINGLE_SHOT_LIMIT = 32 * 1024 * 1024;
 export const UPLOAD_BLOCK_CONCURRENCY = 3;
 
 export const JOBS_STORAGE_KEY = 'ai-agent-chat.jobs.v1';
-/** `ThreadStore` — the conversation list. See the identity note in lib/threads. */
-export const THREAD_STORAGE_KEY = 'ai-agent-chat.threads.v3';
-/** Previous single-conversation key, read once so an in-flight chat is not lost. */
-export const THREAD_STORAGE_KEY_V2 = 'ai-agent-chat.thread.v2';
-/** Conversations kept in the switcher before the oldest are dropped. */
+/**
+ * `ThreadStore` — the conversation in progress. Held in sessionStorage, so it
+ * survives a refresh and ends with the tab. New key: the old localStorage
+ * entries are deliberately abandoned rather than migrated, since carrying a
+ * days-old conversation forward is the behaviour being removed.
+ */
+export const THREAD_STORAGE_KEY = 'ai-agent-chat.thread.session.v1';
+/** Only one conversation is tracked now; the cap is what keeps it that way. */
 export const MAX_TRACKED_THREADS = 20;
 
 /** Confirmations the user has already answered, so a refresh cannot re-offer them. */

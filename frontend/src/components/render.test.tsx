@@ -74,8 +74,11 @@ describe('ChatWindow', () => {
     expect(html).toContain('Attach a PDF');
   });
 
-  it('exposes session history', () => {
-    expect(html).toContain('Conversations');
+  it('offers a way to start over, without a conversation list', () => {
+    // The list was dropped deliberately: it could only ever live in this
+    // browser, and history that vanishes on another device is worse than none.
+    expect(html).toContain('New conversation');
+    expect(html).not.toContain('Conversations (');
   });
 });
 

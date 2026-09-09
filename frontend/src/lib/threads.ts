@@ -1,6 +1,6 @@
-import { MAX_TRACKED_THREADS, THREAD_STORAGE_KEY, THREAD_STORAGE_KEY_V2 } from '@/config';
+import { MAX_TRACKED_THREADS, THREAD_STORAGE_KEY } from '@/config';
 import { uid } from '@/lib/format';
-import { readJson, writeJson } from '@/lib/storage';
+import { readSessionJson, writeSessionJson } from '@/lib/storage';
 
 /**
  * The list of conversations this browser knows about.
@@ -11,8 +11,12 @@ import { readJson, writeJson } from '@/lib/storage';
  * is what stops a server id arriving mid-stream from moving the cache entry the
  * stream is writing into.
  *
- * Until the API offers a conversations endpoint this list is the only session
- * history there is, so it lives in localStorage and survives a refresh.
+ * Scoped to the browsing session, not the browser. A refresh keeps the
+ * conversation - which 2.1 and 2.3 both require - while closing the tab ends
+ * it, so signing in again starts on a clean conversation instead of resuming
+ * one from days ago. There is deliberately no conversation list: the API has
+ * no conversations endpoint, so a list could only ever live in this browser,
+ * and a history that vanishes on another device is worse than no history.
  */
 export interface ThreadRecord {
   threadId: string;
@@ -43,15 +47,8 @@ function emptyStore(): ThreadStore {
   return { activeThreadId: thread.threadId, threads: [thread] };
 }
 
-/** Shape written by the previous single-conversation version. */
-interface LegacyThread {
-  threadId: string;
-  conversationId?: string;
-  fresh?: boolean;
-}
-
 export function loadThreadStore(): ThreadStore {
-  const stored = readJson<ThreadStore | null>(THREAD_STORAGE_KEY, null);
+  const stored = readSessionJson<ThreadStore | null>(THREAD_STORAGE_KEY, null);
   if (stored && Array.isArray(stored.threads) && stored.threads.length > 0) {
     const threads = stored.threads.filter(
       (thread): thread is ThreadRecord => Boolean(thread) && typeof thread.threadId === 'string',
@@ -64,28 +61,13 @@ export function loadThreadStore(): ThreadStore {
     }
   }
 
-  // Carry over the one conversation the previous version tracked rather than
-  // stranding it behind a key nothing reads any more.
-  const legacy = readJson<LegacyThread | null>(THREAD_STORAGE_KEY_V2, null);
-  if (legacy && typeof legacy.threadId === 'string' && legacy.threadId) {
-    const migrated: ThreadRecord = {
-      threadId: legacy.threadId,
-      conversationId: legacy.conversationId,
-      fresh: legacy.fresh,
-      lastActiveAt: Date.now(),
-    };
-    const store = { activeThreadId: migrated.threadId, threads: [migrated] };
-    saveThreadStore(store);
-    return store;
-  }
-
   const fresh = emptyStore();
   saveThreadStore(fresh);
   return fresh;
 }
 
 export function saveThreadStore(store: ThreadStore): void {
-  writeJson(THREAD_STORAGE_KEY, store);
+  writeSessionJson(THREAD_STORAGE_KEY, store);
 }
 
 /** Newest first, capped — an unbounded list would grow forever in storage. */
