@@ -88,9 +88,25 @@
 |---|-------|-------|-------|-------|
 | 1 | **A — Replace flow בצ'אט** | 🔴 חוסם | `backend/**` | ✅ **בוצע** |
 | 2 | **B — "אין לי מידע" מפורש** | 🔴 UX | `backend/**` | ✅ **בוצע** |
-| 3 | **F — זיכרון Attachment מהיסטוריה** | 🔴 UX | `backend/**` | ✅ **בוצע** |
+| 3 | **F — זיכרון Attachment מהיסטוריה** | 🔴 UX | `backend/**` | ✅ **בוצע, שונה** — ראו למטה |
 | 4 | **D — תזמון העלאה ב-Composer** | 🟡 UX | `frontend/**` | ✅ **בוצע** |
 | 5 | **E — היסטוריית שיחות בממשק** | 🟡 UX | `frontend/**` | ✅ **בוצע** |
 | 6 | **G — תיקון מחיקת צ'אנקים (Ghost Chunks)** | 🔴 חוסם Data | `worker/**` | ✅ **בוצע** |
-| 7 | **C — שדרוג חילוץ PDF (Document Intelligence)** | 🔴 איכות RAG | `worker/**` | ✅ **בוצע** |
+| 7 | **C — שדרוג חילוץ PDF (Document Intelligence)** | 🔴 איכות RAG | `worker/**` | ✅ **בוצע, תוקן** — ראו למטה |
+
+---
+
+## עדכון 2026-09-09 (ערב) — מיזוג + 3 באגים נוספים שנמצאו ותוקנו
+
+**הקשר**: ה-push הזה (5f1c022) התנגש עם תיקון מקביל לאותו באג בדיוק (attachment שנעלם אם הסוכן שאל שאלת הבהרה לפני שפעל). מוזג — נשמרו A ו-B כמו שהם, **F הוחלף** במנגנון שכן מתנקה (`conversation_service.set/get/clear_pending_attachment`, לפי conversationId, ולא סריקת history שלא התאפסה לעולם — זו הייתה משאירה את המחיקה חסומה לצמיתות ברגע שקובץ כלשהו צורף פעם אחת בשיחה).
+
+**גם ה-CI עצמו נכשל** ב-push המקורי (backend + worker) — 3 טסטים ישנים שלא עודכנו יחד עם השינוי בהתנהגות (assert על ההתנהגות הקודמת). כלומר עד לתיקון, שום דבר מה-push הזה לא היה חי בפועל.
+
+**3 באגים אמיתיים נוספים נמצאו תוך כדי בדיקה חיה מול הפרודקשן (App Insights, לא רק CI ירוק):**
+
+1. **מפתח מסמך ארוך מדי (>1024 תווים) לקבצים עם שם עברי ארוך.** `create_or_update_indexer` הסתמך על ה-mapping המרומז של Azure ל-`id` מ-`base64(metadata_storage_path)` — כתובת ה-URL המלאה, שם עברי מוחלף ב-percent-encoding (פי 6 לכל תו), ואז base64 מנפח עוד. תוקן: mapping מפורש מ-`metadata_storage_name` (שם הקובץ בלבד, לא ה-URL, ייחודי מטבעו בתוך container) — [`search_indexer.py`](worker/services/search_indexer.py).
+2. **DocumentIntelligenceLayoutSkill נכשל על כל מסמך חדש** — לא היה משאב Document Intelligence בכלל ב-resource group, וה-skillset לא היה מחובר אליו. תוקן: משאב Cognitive Services רב-שירותי חדש ([`document_intelligence.bicep`](infrastructure/modules/document_intelligence.bicep)) + הרשאת Cognitive Services User לזהות המנוהלת של ה-Search + חיבור ה-skillset אליו דרך `AIServicesAccountIdentity` (בלי מפתח, כמו כל שאר המערכת) — [`search_indexer.py`](worker/services/search_indexer.py).
+3. הקובץ "אישור לימודים 1125.pdf" מהדוח המקורי — אומת בפועל שהוא מאונדקס וניתן לחיפוש עכשיו.
+
+**מסלול**: `backend/**`, `worker/**`, `infrastructure/**`.
 
