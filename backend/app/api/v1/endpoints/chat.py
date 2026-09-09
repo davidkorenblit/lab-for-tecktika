@@ -101,6 +101,14 @@ def _sse_response(
                     f"data: {confirmation_data}\n\n"
                 )
 
+                # A replace confirmation already carries the staged path in
+                # its own record; a delete confirmation never used one. Either
+                # way, nothing is left to fall back to for the next turn.
+                conversation_store.clear_pending_attachment(
+                    conversation_id,
+                    requested_by,
+                )
+
             elif event.type == "job":
                 if event.job is None:
                     raise ValueError(
@@ -119,6 +127,13 @@ def _sse_response(
                 yield (
                     "event: job\n"
                     f"data: {job_data}\n\n"
+                )
+
+                # The staged attachment has just been handed to a job; it is
+                # no longer "pending" for this conversation.
+                conversation_store.clear_pending_attachment(
+                    conversation_id,
+                    requested_by,
                 )
 
     except ValueError as exc:
@@ -209,10 +224,27 @@ def send_message(
 
     source_blob_path: str | None = None
     attachment_file_name: str | None = None
+    fresh_attachment = len(request.attachments) == 1
 
-    if len(request.attachments) == 1:
+    if fresh_attachment:
         source_blob_path = request.attachments[0].blob_path
         attachment_file_name = request.attachments[0].file_name
+        conversation_store.set_pending_attachment(
+            conversation_id=conversation_id,
+            requested_by=user.user_id,
+            blob_path=source_blob_path,
+            file_name=attachment_file_name,
+        )
+    else:
+        # The model may not have acted on an attachment in the turn it was
+        # sent (a clarifying question first, say) - the client only sends the
+        # file once, so later turns fall back to what was last staged here.
+        pending = conversation_store.get_pending_attachment(
+            conversation_id,
+            user.user_id,
+        )
+        if pending:
+            source_blob_path, attachment_file_name = pending
 
     if request.stream:
         return StreamingResponse(
@@ -223,6 +255,7 @@ def send_message(
                     requested_by=user.user_id,
                     source_blob_path=source_blob_path,
                     attachment_file_name=attachment_file_name,
+                    fresh_attachment=fresh_attachment,
                     history=history,
                 ),
                 user.user_id,
@@ -236,6 +269,7 @@ def send_message(
             history=history,
             source_blob_path=source_blob_path,
             attachment_file_name=attachment_file_name,
+            fresh_attachment=fresh_attachment,
         )
         conversation_store.add_message(
             conversation_id=conversation_id,

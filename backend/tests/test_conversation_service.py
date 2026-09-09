@@ -126,3 +126,96 @@ def test_multiple_messages_never_overwrite_each_other(
         f"Message {index}" for index in range(10)
     ]
     assert len({message.id for message in messages}) == 10
+
+
+def test_pending_attachment_round_trip(conversation_table_client: Any) -> None:
+    store = _store(conversation_table_client)
+    store.add_message(
+        conversation_id="conv_att",
+        requested_by="owner",
+        role="user",
+        content="here is a file",
+    )
+    store.set_pending_attachment(
+        conversation_id="conv_att",
+        requested_by="owner",
+        blob_path="f_abc/report.pdf",
+        file_name="report.pdf",
+    )
+
+    pending = _store(conversation_table_client).get_pending_attachment(
+        "conv_att", "owner"
+    )
+    assert pending == ("f_abc/report.pdf", "report.pdf")
+
+    _store(conversation_table_client).clear_pending_attachment("conv_att", "owner")
+
+    assert (
+        _store(conversation_table_client).get_pending_attachment("conv_att", "owner")
+        is None
+    )
+
+
+def test_pending_attachment_is_overwritten_by_a_newer_one(
+    conversation_table_client: Any,
+) -> None:
+    store = _store(conversation_table_client)
+    store.add_message(
+        conversation_id="conv_att2",
+        requested_by="owner",
+        role="user",
+        content="first file",
+    )
+    store.set_pending_attachment(
+        conversation_id="conv_att2",
+        requested_by="owner",
+        blob_path="f_1/a.pdf",
+        file_name="a.pdf",
+    )
+    store.set_pending_attachment(
+        conversation_id="conv_att2",
+        requested_by="owner",
+        blob_path="f_2/b.pdf",
+        file_name="b.pdf",
+    )
+
+    assert store.get_pending_attachment("conv_att2", "owner") == (
+        "f_2/b.pdf",
+        "b.pdf",
+    )
+
+
+def test_pending_attachment_is_scoped_to_owner(
+    conversation_table_client: Any,
+) -> None:
+    store = _store(conversation_table_client)
+    store.add_message(
+        conversation_id="conv_att3",
+        requested_by="owner",
+        role="user",
+        content="a file",
+    )
+    store.set_pending_attachment(
+        conversation_id="conv_att3",
+        requested_by="owner",
+        blob_path="f_1/a.pdf",
+        file_name="a.pdf",
+    )
+
+    assert store.get_pending_attachment("conv_att3", "someone-else") is None
+
+
+def test_clear_pending_attachment_without_one_is_a_no_op(
+    conversation_table_client: Any,
+) -> None:
+    store = _store(conversation_table_client)
+    store.add_message(
+        conversation_id="conv_att4",
+        requested_by="owner",
+        role="user",
+        content="no file here",
+    )
+
+    store.clear_pending_attachment("conv_att4", "owner")
+
+    assert store.get_pending_attachment("conv_att4", "owner") is None

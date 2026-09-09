@@ -20,6 +20,7 @@ from app.schemas.confirmation import ConfirmationEvent
 _CONVERSATION_PARTITION_PREFIX = "conversation-"
 _METADATA_ROW_KEY = "metadata"
 _MESSAGE_ROW_PREFIX = "message-"
+_ATTACHMENT_ROW_KEY = "pending-attachment"
 
 
 class _ConversationTableClient(Protocol):
@@ -42,6 +43,10 @@ class _ConversationTableClient(Protocol):
         entity: Mapping[str, Any],
         **kwargs: Any,
     ) -> Any: ...
+
+    def upsert_entity(self, entity: Mapping[str, Any]) -> Any: ...
+
+    def delete_entity(self, partition_key: str, row_key: str) -> Any: ...
 
 
 class TableConversationStore:
@@ -244,3 +249,81 @@ class TableConversationStore:
             ChatHistoryMessage.model_validate_json(str(entity["messageJson"]))
             for entity in message_entities
         ]
+
+    def set_pending_attachment(
+        self,
+        *,
+        conversation_id: str,
+        requested_by: str,
+        blob_path: str,
+        file_name: str,
+    ) -> None:
+        """
+        Remembers the most recently staged attachment for a conversation.
+
+        A message that carries an attachment does not always resolve in the
+        same turn - the agent may ask a clarifying question first. The next
+        turn's request has no attachment of its own, so add_document/
+        replace_document fall back to whatever is remembered here.
+        """
+        table_client = self._table_client_factory()
+        partition_key = self._partition_key(conversation_id)
+        self._ensure_owner(
+            table_client=table_client,
+            partition_key=partition_key,
+            conversation_id=conversation_id,
+            requested_by=requested_by,
+        )
+        table_client.upsert_entity(
+            entity={
+                "PartitionKey": partition_key,
+                "RowKey": _ATTACHMENT_ROW_KEY,
+                "entityType": "pending-attachment",
+                "requestedBy": requested_by,
+                "blobPath": blob_path,
+                "fileName": file_name,
+            }
+        )
+
+    def get_pending_attachment(
+        self,
+        conversation_id: str,
+        requested_by: str,
+    ) -> tuple[str, str] | None:
+        table_client = self._table_client_factory()
+        partition_key = self._partition_key(conversation_id)
+        try:
+            entity = table_client.get_entity(
+                partition_key=partition_key,
+                row_key=_ATTACHMENT_ROW_KEY,
+            )
+        except ResourceNotFoundError:
+            return None
+
+        if entity.get("requestedBy") != requested_by:
+            return None
+
+        return str(entity["blobPath"]), str(entity["fileName"])
+
+    def clear_pending_attachment(
+        self,
+        conversation_id: str,
+        requested_by: str,
+    ) -> None:
+        table_client = self._table_client_factory()
+        partition_key = self._partition_key(conversation_id)
+        try:
+            entity = table_client.get_entity(
+                partition_key=partition_key,
+                row_key=_ATTACHMENT_ROW_KEY,
+            )
+        except ResourceNotFoundError:
+            return
+
+        if entity.get("requestedBy") != requested_by:
+            return
+
+        table_client.delete_entity(
+            partition_key=partition_key,
+            row_key=_ATTACHMENT_ROW_KEY,
+        )

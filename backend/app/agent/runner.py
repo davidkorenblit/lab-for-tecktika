@@ -191,16 +191,20 @@ def _prepare_confirmation(
     )
 
 
-def _allowed_tools(source_blob_path: str | None) -> tuple[BaseTool[BaseModel], ...]:
+def _allowed_tools(fresh_attachment: bool) -> tuple[BaseTool[BaseModel], ...]:
     """
     Returns the subset of tools the model is allowed to call for this turn.
 
-    When an attachment is present, delete_document is excluded entirely:
-    an attachment is an unambiguous signal of an add/replace intent, never a
-    deletion. Removing the tool from the schema is the strongest possible
-    guardrail — the model cannot choose what it cannot see.
+    When the user just attached a file to this exact message, delete_document
+    is excluded entirely: a fresh attachment is an unambiguous signal of an
+    add/replace intent, never a deletion. Removing the tool from the schema is
+    the strongest possible guardrail — the model cannot choose what it cannot
+    see. This deliberately ignores a carried-over attachment from an earlier
+    turn (see source_blob_path fallback in the chat endpoint) — once the file
+    is no longer physically attached to the message, an unrelated delete
+    request must not be blocked by it.
     """
-    if source_blob_path:
+    if fresh_attachment:
         return tuple(t for t in TOOLS if t.name != "delete_document")
     return TOOLS
 
@@ -211,6 +215,7 @@ def run_agent(
     history: list[ChatHistoryMessage] | None = None,
     source_blob_path: str | None = None,
     attachment_file_name: str | None = None,
+    fresh_attachment: bool = False,
 ) -> str:
     messages = _build_messages(
         user_message,
@@ -218,7 +223,7 @@ def run_agent(
         source_blob_path=source_blob_path,
         attachment_file_name=attachment_file_name,
     )
-    openai_tools = [to_openai_tool(tool) for tool in _allowed_tools(source_blob_path)]
+    openai_tools = [to_openai_tool(tool) for tool in _allowed_tools(fresh_attachment)]
 
     response = create_chat_completion(
         messages,
@@ -270,6 +275,7 @@ def stream_agent(
     requested_by: str,
     source_blob_path: str | None = None,
     attachment_file_name: str | None = None,
+    fresh_attachment: bool = False,
     history: list[ChatHistoryMessage] | None = None,
 ) -> Iterator[AgentEvent]:
     messages = _build_messages(
@@ -278,7 +284,7 @@ def stream_agent(
         source_blob_path=source_blob_path,
         attachment_file_name=attachment_file_name,
     )
-    openai_tools = [to_openai_tool(tool) for tool in _allowed_tools(source_blob_path)]
+    openai_tools = [to_openai_tool(tool) for tool in _allowed_tools(fresh_attachment)]
 
     response = create_chat_completion(
         messages,
@@ -309,10 +315,14 @@ def stream_agent(
             tool_call.function.arguments,
         )
 
-        # Hard guard: delete_document must never be called when an attachment
-        # is present. _allowed_tools() already excludes it from the schema,
-        # but we enforce it here as a second layer of defence.
-        if tool.name == "delete_document" and source_blob_path:
+        # Hard guard: delete_document must never be called when a file was
+        # just attached to this message. _allowed_tools() already excludes it
+        # from the schema, but we enforce it here as a second layer of
+        # defence. Keyed on fresh_attachment, not source_blob_path — the
+        # latter may be a carried-over attachment from an earlier turn (see
+        # the chat endpoint's fallback), which must not block an unrelated
+        # delete request.
+        if tool.name == "delete_document" and fresh_attachment:
             raise ValueError(
                 "Deletion cannot be performed while a file is attached. "
                 "Remove the attachment and try again."

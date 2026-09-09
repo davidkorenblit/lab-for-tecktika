@@ -156,6 +156,72 @@ def test_replace_tool_uses_trusted_staged_attachment() -> None:
     assert call["source_blob_path"] == "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/report.pdf"
 
 
+def test_delete_allowed_when_attachment_is_stale_not_fresh() -> None:
+    """
+    A carried-over source_blob_path (fallback from an earlier turn, see the
+    chat endpoint's pending-attachment lookup) must not block an unrelated
+    delete request once nothing is actually attached to this message.
+    """
+    tool_call = SimpleNamespace(
+        id="call_delete_stale",
+        function=SimpleNamespace(
+            name="delete_document",
+            arguments='{"file_name":"Q3-report.pdf"}',
+        ),
+    )
+
+    assistant_message = SimpleNamespace(
+        content=None,
+        tool_calls=[tool_call],
+    )
+
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=assistant_message,
+            )
+        ]
+    )
+
+    resolved = ResolvedDocument(
+        file_name="Q3-report.pdf",
+        blob_name="Q3-report.pdf",
+        document_id="doc_123",
+        etag='"etag_123"',
+    )
+
+    with (
+        patch(
+            "app.agent.runner.create_chat_completion",
+            return_value=response,
+        ),
+        patch(
+            "app.agent.runner.resolve_document",
+            return_value=[resolved],
+        ),
+        patch(
+            "app.agent.runner.confirmation_store.create",
+        ) as create_confirmation,
+    ):
+        create_confirmation.return_value = SimpleNamespace(
+            confirmation_id="cf_test_stale",
+        )
+
+        events = list(
+            stream_agent(
+                "Delete Q3-report.pdf",
+                requested_by="conv_123",
+                source_blob_path="f_stale/leftover.pdf",
+                fresh_attachment=False,
+            )
+        )
+
+    assert len(events) == 1
+    assert events[0].type == "confirmation"
+    assert events[0].confirmation is not None
+    assert events[0].confirmation.action == "delete"
+
+
 def test_stream_agent_sends_previous_turns_to_model() -> None:
     assistant_message = SimpleNamespace(
         content="It is 30 days.",

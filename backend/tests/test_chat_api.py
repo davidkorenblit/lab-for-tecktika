@@ -40,6 +40,7 @@ def test_chat_message_calls_agent() -> None:
         history=[],
         source_blob_path=None,
         attachment_file_name=None,
+        fresh_attachment=False,
     )
 
 
@@ -386,6 +387,100 @@ def test_chat_history_rejects_unauthenticated_request() -> None:
         )
 
     assert response.status_code == 401
+
+
+def test_attachment_survives_a_clarifying_question_and_completes_the_add() -> None:
+    """
+    Reproduces the reported bug: attach a file, the agent asks a clarifying
+    question instead of acting immediately, the user's follow-up carries no
+    attachment of its own - add_document must still see the staged file
+    instead of failing with "Adding a document requires an uploaded
+    attachment".
+    """
+    from app.agent.events import JobEvent
+
+    attachment = {
+        "fileId": "f_1",
+        "fileName": "1125.pdf",
+        "size": 100,
+        "blobPath": "f_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d/1125.pdf",
+    }
+
+    with patch(
+        "app.api.v1.endpoints.chat.stream_agent",
+        return_value=iter(
+            [AgentEvent(type="delta", delta="Add it or replace an existing one?")]
+        ),
+    ) as first_call:
+        first_response = client.post(
+            "/api/chat/message",
+            json={
+                "message": "here is a document",
+                "conversationId": "conv_pending_attachment",
+                "stream": True,
+                "attachments": [attachment],
+            },
+            headers={"Accept": "text/event-stream"},
+        )
+
+    assert first_response.status_code == 200
+    assert first_call.call_args.kwargs["fresh_attachment"] is True
+    assert (
+        first_call.call_args.kwargs["source_blob_path"] == attachment["blobPath"]
+    )
+
+    with patch(
+        "app.api.v1.endpoints.chat.stream_agent",
+        return_value=iter(
+            [
+                AgentEvent(
+                    type="job",
+                    job=JobEvent(
+                        jobId="job_pending_1",
+                        status="queued",
+                        fileName="1125.pdf",
+                    ),
+                )
+            ]
+        ),
+    ) as second_call:
+        second_response = client.post(
+            "/api/chat/message",
+            json={
+                "message": "1125.pdf is the file name",
+                "conversationId": "conv_pending_attachment",
+                "stream": True,
+                "attachments": [],
+            },
+            headers={"Accept": "text/event-stream"},
+        )
+
+    assert second_response.status_code == 200
+    assert second_call.call_args.kwargs["fresh_attachment"] is False
+    assert (
+        second_call.call_args.kwargs["source_blob_path"] == attachment["blobPath"]
+    )
+    assert second_call.call_args.kwargs["attachment_file_name"] == "1125.pdf"
+
+    # The job above consumed the staged attachment - nothing left to fall
+    # back to on a later, unrelated turn.
+    with patch(
+        "app.api.v1.endpoints.chat.stream_agent",
+        return_value=iter([AgentEvent(type="delta", delta="Anything else?")]),
+    ) as third_call:
+        client.post(
+            "/api/chat/message",
+            json={
+                "message": "thanks",
+                "conversationId": "conv_pending_attachment",
+                "stream": True,
+                "attachments": [],
+            },
+            headers={"Accept": "text/event-stream"},
+        )
+
+    assert third_call.call_args.kwargs["source_blob_path"] is None
+    assert third_call.call_args.kwargs["attachment_file_name"] is None
 
 
 def test_chat_history_rejects_another_user() -> None:

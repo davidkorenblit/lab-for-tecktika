@@ -68,6 +68,16 @@ class FakeConversationTableClient:
             if entity_partition == partition_key
         ]
 
+    def upsert_entity(self, entity: dict[str, object]) -> None:
+        key = (str(entity["PartitionKey"]), str(entity["RowKey"]))
+        self.entities[key] = dict(entity)
+        self.versions[key] = self.versions.get(key, 0) + 1
+
+    def delete_entity(self, partition_key: str, row_key: str) -> None:
+        key = (partition_key, row_key)
+        self.entities.pop(key, None)
+        self.versions.pop(key, None)
+
 
 @pytest.fixture
 def conversation_table_client() -> FakeConversationTableClient:
