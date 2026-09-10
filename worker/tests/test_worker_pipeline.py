@@ -280,3 +280,29 @@ def test_job_status_is_persisted_as_its_value():
 
     assert dumped["status"] == "FAILED"
     assert JobStatus(dumped["status"]) is JobStatus.FAILED
+
+
+def test_wait_for_indexer_fails_when_items_fail():
+    """
+    Verifies that wait_for_indexer raises RuntimeError if the run status is
+    success but individual documents within the run failed.
+    """
+    from types import SimpleNamespace
+    from services.search_service import SearchService
+
+    service = SearchService()
+    mock_client = MagicMock()
+    mock_status = SimpleNamespace(
+        last_result=SimpleNamespace(
+            status="success",
+            failed_item_count=1,
+            errors=[SimpleNamespace(message="Document key too long")],
+        )
+    )
+    mock_client.get_indexer_status.return_value = mock_status
+    service._indexer_client = mock_client
+    service.trigger_indexer = MagicMock()
+
+    with pytest.raises(RuntimeError, match="Document key too long"):
+        service.wait_for_indexer(timeout_seconds=2, poll_interval=0.1)
+

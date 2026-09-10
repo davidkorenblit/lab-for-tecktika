@@ -96,8 +96,17 @@ class SearchService:
             if state in ("inprogress", "running", "reset"):
                 continue
             if state == "success":
+                failed_count = getattr(last, "failed_item_count", 0) or 0
+                errors = getattr(last, "errors", None) or []
+                if failed_count > 0 or errors:
+                    error_msgs = [getattr(e, "message", str(e)) for e in errors]
+                    error_detail = "; ".join(error_msgs) if error_msgs else f"{failed_count} item(s) failed indexing"
+                    logging.error(f"Indexer '{self.indexer_name}' completed with item errors: {error_detail}")
+                    raise RuntimeError(f"Indexer '{self.indexer_name}' failed to index document: {error_detail}")
+
                 logging.info(f"Indexer '{self.indexer_name}' completed successfully.")
                 return True
+
 
             raise RuntimeError(f"Indexer '{self.indexer_name}' failed with status [{last.status}]. Errors: {getattr(last, 'errors', None)}")
 
