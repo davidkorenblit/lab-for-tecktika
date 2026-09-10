@@ -47,3 +47,22 @@ def resolve_document(file_name: str) -> list[ResolvedDocument]:
         )
 
     return matches
+
+
+def list_library_documents() -> list[str]:
+    """
+    Returns a distinct list of document file names currently stored in the library.
+    """
+    service_client = get_blob_service_client()
+    container_client = service_client.get_container_client(
+        settings.blob_container_name
+    )
+
+    names: list[str] = []
+    for blob in container_client.list_blobs():
+        blob_name = str(blob.name)
+        if blob_name and blob_name not in names:
+            names.append(blob_name)
+
+    return names
+

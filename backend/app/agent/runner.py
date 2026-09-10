@@ -13,6 +13,7 @@ from app.agent.tools.document_tools import (
     DeleteDocumentTool,
     ReplaceDocumentTool,
 )
+from app.agent.tools.list_documents_tool import ListDocumentsTool
 from app.agent.tools.search_tool import SearchDocumentsTool
 from app.schemas.chat import ChatHistoryMessage, Citation
 from app.schemas.confirmation import ConfirmationEvent
@@ -28,10 +29,12 @@ from app.services.job_manager import create_job_and_enqueue
 
 TOOLS: tuple[BaseTool[BaseModel], ...] = (
     SearchDocumentsTool(),
+    ListDocumentsTool(),
     AddDocumentTool(),
     ReplaceDocumentTool(),
     DeleteDocumentTool(),
 )
+
 
 MAX_HISTORY_MESSAGES = 20
 MAX_HISTORY_CHARACTERS = 24_000
@@ -95,8 +98,17 @@ def _build_messages(
         remaining_characters -= len(message.content)
 
     for message in reversed(selected):
+        content = message.content
+        if message.role == "user" and getattr(message, "attachments", None):
+            att_names = [
+                a.file_name for a in message.attachments
+                if getattr(a, "file_name", None)
+            ]
+            if att_names:
+                content = f"{content} (קובץ מצורף: {', '.join(att_names)})"
+
         messages.append(
-            {"role": message.role, "content": message.content}
+            {"role": message.role, "content": content}
         )
 
     messages.append({"role": "user", "content": user_message})
@@ -241,10 +253,11 @@ def run_agent(
     for tool_call in tool_calls:
         tool = get_tool_by_name(tool_call.function.name)
 
-        if tool.name != "search_documents":
+        if tool.name not in {"search_documents", "list_documents"}:
             raise ValueError(
                 f"Tool '{tool.name}' requires streaming application-managed handling"
             )
+
 
         arguments = parse_tool_arguments(
             tool,

@@ -67,3 +67,8 @@ class SearchDocumentsArgs(BaseModel):
         default=None,
         description="Optional document ID to restrict the search",
     )
+
+
+class ListDocumentsArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+

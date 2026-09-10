@@ -110,3 +110,28 @@
 
 **מסלול**: `backend/**`, `worker/**`, `infrastructure/**`.
 
+---
+
+## עדכון 2026-09-10 — שיפור הקשר קבצים, כלי `list_documents` וחידוד חיפוש סמנטי
+
+**מטרה**: פתרון בעיית "שכחת" המסמך האחרון שהועלה ומניעת הזיות בנוסח "אין לי קבצים ב-storge".
+
+1. **הוספת כלי `list_documents` לסוכן**:
+   - נוצר כלי [`ListDocumentsTool`](backend/app/agent/tools/list_documents_tool.py) עם סכמה [`ListDocumentsArgs`](backend/app/schemas/tools.py).
+   - חובר לפונקציה [`list_library_documents()`](backend/app/services/file_resolver.py) הסורקת את ה-Blob Storage ומחזירה שמות קבצים קיימים.
+   - מעודכן ב-[`runner.py`](backend/app/agent/runner.py) ומאפשר לסוכן לענות במדויק לשאלות על רשימת הקבצים הזמינים.
+
+2. **שימור הקשר שמות קבצים בהיסטוריית השיחה (Context Retention)**:
+   - ב-[`chat.py`](backend/app/api/v1/endpoints/chat.py): בסיום העלאת קובץ ויצירת Job, נשמרת בשיחה הודעת Assistant עם שם הקובץ (`הקובץ 'X' נוסף לספרייה ונשלח לאינדוקס`).
+   - ב-[`runner.py`](backend/app/agent/runner.py): פונקציית `_build_messages` שומרת את שמות ה-attachments של הודעות עבר בתוך הקונטקסט שהמודל רואה. כתוצאה מכך, שאלות עוקבות כגון "מה נוהל הפיטורים במסמך האחרון?" מזהות מיד את שם הקובץ.
+
+3. **חידוד הנחיות החיפוש ב-[`prompts.py`](backend/app/agent/prompts.py)**:
+   - הנחיה מפורשת לסוכן לקרוא ל-`list_documents` כשמבקשים רשימת קבצים, ולא לטעון שאין קבצים בלי לבדוק.
+   - הנחיה להריץ ישירות חיפוש סמנטי (`search_documents`) לפי מילות מפתח מנושא השאלה, במקום לעצור ולבקש מהמשתמש להעלות שוב את הקובץ או לציין את שמו.
+
+**בדיקות ואימות**:
+- נוסף קובץ טסטים מלא [`test_list_documents_tool.py`](backend/tests/test_list_documents_tool.py) (5 בדיקות חדשות).
+- 118 טסטים של ה-backend עברו בהצלחה (100% ירוק).
+- 13 טסטים של ה-worker עברו בהצלחה (100% ירוק).
+
+

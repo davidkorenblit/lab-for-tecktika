@@ -40,6 +40,8 @@ def _sse_response(
     citations: list[Citation] = []
     confirmation: ConfirmationEvent | None = None
     job_ids: list[str] = []
+    job_file_names: list[str] = []
+
 
     try:
         for event in events:
@@ -116,7 +118,10 @@ def _sse_response(
                     )
 
                 job_ids.append(event.job.job_id)
+                if event.job.file_name:
+                    job_file_names.append(event.job.file_name)
                 job_data = json.dumps(
+
                     event.job.model_dump(
                         by_alias=True,
                         mode="json",
@@ -175,7 +180,11 @@ def _sse_response(
 
     assistant_message = "".join(assistant_chunks)
 
+    if not assistant_message and job_file_names:
+        assistant_message = f"הקובץ '{job_file_names[0]}' נוסף לספרייה ונשלח לאינדוקס."
+
     if assistant_message or citations or confirmation or job_ids:
+
         conversation_store.add_message(
             conversation_id=conversation_id,
             requested_by=requested_by,
